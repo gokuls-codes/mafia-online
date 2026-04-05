@@ -1,4 +1,4 @@
-export type Faction = "Town" | "Mafia" | "Neutral";
+export type Faction = "Town" | "Mafia" | "Neutral" | "Jester";
 
 export interface Role {
   id: string;
@@ -34,7 +34,7 @@ export const ROLES: Record<string, Role> = {
   DETECTIVE: {
     id: "detective",
     name: "Detective",
-    description: "Follows people at night to see who they visit.",
+    description: "Can check if a player is mafia or not.",
     faction: "Town",
     alignment: "Good",
     powerDescription:
@@ -111,7 +111,13 @@ export const ROLES: Record<string, Role> = {
   },
 };
 
-export type GameStatus = "Lobby" | "Night" | "Day" | "Voting" | "Verdict" | "Finished";
+export type GameStatus =
+  | "Lobby"
+  | "Night"
+  | "Day"
+  | "Voting"
+  | "Verdict"
+  | "Finished";
 
 export interface Room {
   id: string;

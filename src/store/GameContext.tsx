@@ -158,14 +158,23 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [roomId, userId]);
 
   const checkWinConditions = (allPlayers: any[]) => {
+    // Note: This function works with raw DB objects (snake_case)
     const alive = allPlayers.filter(p => p.is_alive);
+    if (alive.length === 0) return { winner: 'None' };
+
     const mafiaCount = alive.filter(p => p.faction === 'Mafia').length;
     const townCount = alive.filter(p => p.faction === 'Town').length;
     const neutralKillers = alive.filter(p => p.role_id === 'serial_killer').length;
 
+    // Town wins if all threats (Mafia and SK) are eliminated
     if (mafiaCount === 0 && neutralKillers === 0) return { winner: 'Town' };
-    if (mafiaCount >= (townCount + neutralKillers)) return { winner: 'Mafia' };
+    
+    // Mafia wins when they reach parity with OR outnumber the rest of the living players
+    if (mafiaCount >= (alive.length - mafiaCount)) return { winner: 'Mafia' };
+    
+    // Serial Killer wins if they are the last one standing (or 1v1 with a non-lethal role)
     if (alive.length === 1 && neutralKillers === 1) return { winner: 'Neutral' };
+    if (alive.length === 2 && neutralKillers === 1 && mafiaCount === 0) return { winner: 'Neutral' };
     
     return { winner: null };
   };
@@ -353,10 +362,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 6. Final Synchronized Update: Deaths, History, and Resets
       // We do this BEFORE potentially returning so the Game Over screen has the dead players marked as Dead.
       for (const p of latestPlayers) {
+          const isMayor = p.role_id === 'mayor';
           await supabase.from('players').update({ 
                is_alive: (p.is_alive && !deadIds.has(p.id)) ? true : false,
                last_action_target: p.action_target,
-               action_target: null,
+               // MAGISTRATE (Mayor) pardon persists from Night until end of Voting
+               action_target: isMayor ? p.action_target : null,
                vote_target: null
           }).eq('id', p.id);
       }
@@ -390,11 +401,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (room.status === 'Voting') {
       // --- VOTING RESOLUTION LOGIC ---
-      const activePlayers = players.filter(p => p.isAlive);
+      
+      // 1. Fetch latest data to avoid race conditions with Mayor (Magistrate) pardon
+      const { data: latestPlayers } = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
+      if (!latestPlayers) return;
+
+      const activePlayers = latestPlayers.filter(p => p.is_alive);
       const votes: Record<string, number> = {};
       activePlayers.forEach(p => {
-          if (p.voteTarget) {
-              votes[p.voteTarget] = (votes[p.voteTarget] || 0) + 1;
+          if (p.vote_target) {
+              votes[p.vote_target] = (votes[p.vote_target] || 0) + 1;
           }
       });
 
@@ -408,32 +424,58 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
       });
 
-      // 3. Check for Mayor's Pardon (Only applies to real players, not skips)
-      const mayorAction = players.find(p => p.roleId === 'mayor' && p.isAlive);
-      const isPardoned = winnerId && winnerId !== 'skip' && mayorAction?.actionTarget === winnerId;
+      // 3. Check for Mayor's Pardon (Magistrate save)
+      // Note: Use snake_case because it is raw DB data
+      const mayorAction = latestPlayers.find(p => p.role_id === 'mayor' && p.is_alive);
+      const isPardoned = winnerId && winnerId !== 'skip' && mayorAction?.action_target === winnerId;
 
-      // 4. Prepare Result Summary
-      const winnerPlayer = winnerId && winnerId !== 'skip' ? players.find(p => p.id === winnerId) : null;
-      const isSkip = winnerId === 'skip';
+      // 4. Identify the Winner Player from the LATEST fetched data (raw DB state)
+      const winnerPlayer = winnerId && winnerId !== "skip" 
+        ? latestPlayers.find((p) => p.id === winnerId) 
+        : null;
+      const isSkip = winnerId === "skip";
 
       const voteSummary = {
-          deadNames: (winnerPlayer && !isPardoned) ? [winnerPlayer.name] : [],
-          message: isPardoned
-            ? `The mob has spoken, but the Mayor has granted ${winnerPlayer?.name} an executive pardon. No one was evicted today.`
-            : (isSkip
-                ? 'The town has officially decided to abstain from voting today. No one was executed.'
-                : (winnerPlayer 
-                    ? `The town has reached a verdict. ${winnerPlayer.name} has been sentenced to death.`
-                    : 'The town could not reach a clear majority. No one was evicted today.'))
+        deadNames: winnerPlayer && !isPardoned ? [winnerPlayer.name] : [],
+        message: isPardoned
+          ? `The mob has spoken, but the Mayor has granted ${winnerPlayer?.name} an executive pardon. No one was evicted today.`
+          : isSkip
+            ? "The town has officially decided to abstain from voting today. No one was executed."
+            : winnerPlayer
+              ? `The town has reached a verdict. ${winnerPlayer.name} has been sentenced to death.`
+              : "The town could not reach a clear majority. No one was evicted today.",
       };
 
       if (winnerPlayer && !isPardoned) {
-          await supabase.from('players').update({ is_alive: false }).eq('id', winnerId);
+        // JESTER WIN CONDITION: Correctly using role_id from latestPlayers
+          if (winnerPlayer.role_id === "jester") {
+            await supabase.from("players").update({ is_alive: false }).eq("id", winnerId);
+            await supabase.from("rooms").update({ 
+                status: "Finished", 
+                winner_faction: "Jester",
+                last_vote_summary: { 
+                    deadNames: [winnerPlayer.name], 
+                    message: `THE JESTER HAS WON! ${winnerPlayer.name} successfully tricked the town into executing them! THE SHOW IS OVER.` 
+                } as any
+            }).eq("id", roomId);
+            return;
+          }
+        await supabase.from("players").update({ is_alive: false }).eq("id", winnerId);
       }
 
-      // Check Victory
-      const allPlayersAfterVote = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
-      const { winner: winFaction } = checkWinConditions(allPlayersAfterVote.data || []);
+      // ... existing cleanup logic ...
+      for (const p of latestPlayers) {
+          const isMayor = p.role_id === 'mayor';
+          await supabase.from('players').update({ 
+               vote_target: null,
+               action_target: isMayor ? null : p.action_target,
+               last_action_target: isMayor ? p.action_target : p.last_action_target
+          }).eq('id', p.id);
+      }
+
+      // 6. Check Victory with the absolute latest data after this execution
+      const { data: finalPlayers } = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
+      const { winner: winFaction } = checkWinConditions(finalPlayers || []);
 
       if (winFaction) {
           await supabase.from('rooms').update({ 
