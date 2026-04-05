@@ -16,6 +16,8 @@ import {
   Moon,
   ShieldOff,
   Clock,
+  X,
+  Zap,
 } from "lucide-react";
 import { ROLES, Faction } from "@/types/game";
 
@@ -1401,8 +1403,61 @@ function PlayerIdentity() {
   );
 }
 
+function SidePanel({
+  isOpen,
+  onClose,
+  title,
+  children,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-100"
+          />
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="fixed top-0 right-0 h-full w-full max-w-lg bg-zinc-900 border-l border-white/5 shadow-2xl z-101 overflow-y-auto"
+          >
+            <div className="p-8 space-y-8">
+              <div className="flex items-center justify-between border-b border-white/5 pb-6">
+                <h2 className="text-3xl font-cinzel text-accent tracking-widest">
+                  {title}
+                </h2>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-white/5 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6 text-zinc-500" />
+                </button>
+              </div>
+              <div className="space-y-6 pb-12 font-outfit">{children}</div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function GameContent() {
   const { room } = useGame();
+  const [activePanel, setActivePanel] = useState<"rules" | "roles" | null>(
+    null,
+  );
 
   // Dynamic background classes based on phase
   const isNight = room?.status === "Night";
@@ -1431,6 +1486,132 @@ function GameContent() {
         backgroundImage: `radial-gradient(circle at 50% -10%, ${gradientColor}, transparent 70%)`,
       }}
     >
+      <SidePanel
+        isOpen={activePanel === "rules"}
+        onClose={() => setActivePanel(null)}
+        title="Rules"
+      >
+        <div className="space-y-8 font-outfit text-zinc-300">
+          <section className="space-y-3">
+            <h3 className="text-accent font-cinzel text-lg flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              THE NIGHT PHASE
+            </h3>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              When the shadows fall, special roles awaken. The Mafia coordinates
+              their strike, while the Town's protectors use their secret
+              abilities to save or investigate.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-accent font-cinzel text-lg flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              THE DAY BREAK
+            </h3>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              The city wakes to find who survived. Survivors discuss, debate,
+              and attempt to uncover the hidden threats within their midst.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-accent font-cinzel text-lg flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              VOTING & VERDICT
+            </h3>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              The Town chooses a suspect for execution. If a majority is
+              reached, the suspect is sent to the gallows. Choose wisely—once
+              dead, there is no return.
+            </p>
+          </section>
+
+          <section className="space-y-4 pt-4 border-t border-white/5">
+            <h3 className="text-zinc-200 font-cinzel text-xl">
+              VICTORY CONDITIONS
+            </h3>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="glass p-4 rounded-xl">
+                <h4 className="text-green-500 font-bold text-xs uppercase tracking-widest mb-1">
+                  Town
+                </h4>
+                <p className="text-zinc-500 text-xs text-balance">
+                  Eliminate all Mafia and Serial Killer threats to restore
+                  order.
+                </p>
+              </div>
+              <div className="glass p-4 rounded-xl">
+                <h4 className="text-red-500 font-bold text-xs uppercase tracking-widest mb-1">
+                  Mafia
+                </h4>
+                <p className="text-zinc-500 text-xs text-balance">
+                  Outnumber or match the living Town members to claim the city.
+                </p>
+              </div>
+              <div className="glass p-4 rounded-xl">
+                <h4 className="text-fuchsia-500 font-bold text-xs uppercase tracking-widest mb-1">
+                  Serial Killer
+                </h4>
+                <p className="text-zinc-500 text-xs text-balance">
+                  Be the absolute last one alive to reach ultimate carnage.
+                </p>
+              </div>
+              <div className="glass p-4 rounded-xl">
+                <h4 className="text-orange-500 font-bold text-xs uppercase tracking-widest mb-1">
+                  Jester
+                </h4>
+                <p className="text-zinc-500 text-xs text-balance">
+                  Deceive the Town into voting for your execution to win the
+                  stage.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </SidePanel>
+
+      <SidePanel
+        isOpen={activePanel === "roles"}
+        onClose={() => setActivePanel(null)}
+        title="Roles"
+      >
+        <div className="grid grid-cols-1 gap-4 font-outfit text-zinc-300">
+          {Object.values(ROLES).map((role) => (
+            <div
+              key={role.id}
+              className="glass p-6 rounded-2xl border-white/5 group hover:border-accent/30 transition-all duration-300"
+            >
+              <div className="flex items-center justify-between mb-3 text-zinc-100">
+                <h3 className="text-xl font-cinzel text-zinc-200 group-hover:text-accent transition-colors">
+                  {role.name}
+                </h3>
+                <span
+                  className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest ${
+                    role.faction === "Mafia"
+                      ? "bg-red-500/20 text-red-500"
+                      : role.faction === "Town"
+                        ? "bg-accent/20 text-accent"
+                        : "bg-fuchsia-500/20 text-fuchsia-500"
+                  }`}
+                >
+                  {role.faction}
+                </span>
+              </div>
+              <p className="text-zinc-400 text-[13px] leading-relaxed mb-4">
+                {role.description}
+              </p>
+              <div className="flex items-start gap-2 pt-4 border-t border-white/5 opacity-80">
+                <Zap className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+                <p className="text-zinc-500 text-[11px] italic leading-snug">
+                  {role.powerDescription}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </SidePanel>
+
       <header className="fixed top-0 left-0 right-0 z-50 p-6 flex justify-between items-center border-b border-white/5 bg-background/80 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-accent rounded flex items-center justify-center font-cinzel font-bold text-white shadow-red">
@@ -1447,21 +1628,25 @@ function GameContent() {
         </div>
 
         <div className="flex items-center gap-8">
-          <div className="hidden md:flex items-center gap-6">
-            <a
-              href="#"
-              className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest"
+          <div className="hidden md:flex items-center gap-4">
+            <button
+              onClick={() => setActivePanel("rules")}
+              className="px-6 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all flex items-center gap-2 group"
             >
-              <HelpCircle className="w-3 h-3 text-accent" />
-              RULES
-            </a>
-            <a
-              href="#"
-              className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest"
+              <HelpCircle className="w-5 h-5 text-accent group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold font-cinzel tracking-widest text-zinc-300">
+                RULES
+              </span>
+            </button>
+            <button
+              onClick={() => setActivePanel("roles")}
+              className="px-6 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all flex items-center gap-2 group"
             >
-              <Info className="w-3 h-3 text-accent" />
-              ROLES
-            </a>
+              <Info className="w-5 h-5 text-accent group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold font-cinzel tracking-widest text-zinc-300">
+                ROLES
+              </span>
+            </button>
           </div>
           <PlayerIdentity />
         </div>
