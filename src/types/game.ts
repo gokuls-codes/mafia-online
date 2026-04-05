@@ -111,7 +111,7 @@ export const ROLES: Record<string, Role> = {
   },
 };
 
-export type GameStatus = "Lobby" | "Night" | "Day" | "Voting" | "Finished";
+export type GameStatus = "Lobby" | "Night" | "Day" | "Voting" | "Verdict" | "Finished";
 
 export interface Room {
   id: string;
@@ -131,6 +131,10 @@ export interface Room {
     deadNames: string[];
     message: string;
   };
+  last_vote_summary?: {
+    deadNames: string[];
+    message: string;
+  };
   mafia_target?: string | null;
 }
 
@@ -145,4 +149,5 @@ export interface Player {
   isHost: boolean;
   voteTarget?: string;
   actionTarget?: string;
+  lastActionTarget?: string;
 }

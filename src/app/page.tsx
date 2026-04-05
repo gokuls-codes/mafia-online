@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GameProvider, useGame } from '@/store/GameContext';
-import { LogIn, Plus, Users, Shield, UserX, Skull, Search, Info, HelpCircle, Moon } from 'lucide-react';
+import { LogIn, Plus, Users, Shield, UserX, Skull, Search, Info, HelpCircle, Moon, ShieldOff } from 'lucide-react';
 import { ROLES, Faction } from '@/types/game';
 
 function LandingPage({ onCreate, onJoinByCode }: { onCreate: (name: string, hostName: string) => void, onJoinByCode: (code: string, name: string) => void }) {
@@ -362,7 +362,11 @@ function NightView() {
   if (!room || !me) return null;
 
   const role = me.roleId ? ROLES[me.roleId.toUpperCase()] : null;
-  const otherPlayers = players.filter(p => p.id !== me.id && p.isAlive);
+  const otherPlayers = players.filter(p => {
+    const isSelf = p.id === me.id;
+    if (isSelf) return ['doctor', 'mayor'].includes(me.roleId?.toLowerCase() || '') && p.isAlive;
+    return p.isAlive;
+  });
   
   // Custom action label based on role
   const getActionPrompt = () => {
@@ -407,16 +411,25 @@ function NightView() {
   const isDetectiveLocked = me.roleId?.toLowerCase() === 'detective' && me.actionTarget;
   
   // 1. Lock if you are Mafia and the hit is already finalized in room.mafia_target
-  // 2. Lock if you are a Detective and have already completed your investigation
-  // 3. Lock instantly for any role NOT listed (Doctor/Police/Mayor/Mafia can change until lock)
+  // 2. Lock if you are a Detective/Doctor/Mayor/Police and have made a choice
+  // 3. Mafia members can change until the hit is finalized (room.mafia_target)
   const isActionLocked = Boolean(
     (isMafiaRole && room.mafia_target) || 
-    isDetectiveLocked || 
-    (me.actionTarget && !['doctor', 'police', 'mayor', 'mafia', 'godfather'].includes(me.roleId?.toLowerCase() || ''))
+    (me.actionTarget && !['mafia', 'godfather'].includes(me.roleId?.toLowerCase() || ''))
   );
   
   // Get other mafia preferences
   const otherMafia = players.filter(p => p.id !== me.id && ['mafia', 'godfather'].includes(p.roleId?.toLowerCase() || ''));
+
+  const [showOverview, setShowOverview] = useState(false);
+  const [canShowOverview, setCanShowOverview] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+        setCanShowOverview(true);
+    }, 10000); // 10 seconds
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <motion.div 
@@ -497,7 +510,11 @@ function NightView() {
                 <button 
                   key={p.id}
                   onClick={() => hasAction && !isActionLocked && performAction(p.id)}
-                  disabled={!hasAction || isActionLocked}
+                  disabled={
+                    !hasAction || 
+                    isActionLocked || 
+                    (['doctor', 'mayor'].includes(me.roleId?.toLowerCase() || '') && me.lastActionTarget === p.id)
+                  }
                   className={`flex items-center justify-between p-4 rounded-2xl transition-all border group relative ${
                       activeTargetId === p.id 
                       ? (isSavingRole ? 'bg-green-600 border-green-500 text-white' : 'bg-accent border-accent text-white') 
@@ -505,7 +522,12 @@ function NightView() {
                   } disabled:opacity-50`}
                 >
                   <div className="flex flex-col items-start translate-y-0.5">
-                    <span className="font-outfit text-lg">{p.name}</span>
+                    <div className="flex items-center gap-2">
+                        <span className="font-outfit text-lg">{p.name}</span>
+                        {['doctor', 'mayor'].includes(me.roleId?.toLowerCase() || '') && me.lastActionTarget === p.id && (
+                            <span className="text-[8px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Cooldown</span>
+                        )}
+                    </div>
                     {isMafiaRole && (
                         <div className="flex gap-1 mt-1">
                             {players.filter(mp => ['mafia', 'godfather'].includes(mp.roleId?.toLowerCase() || '') && mp.actionTarget === p.id).map(mp => (
@@ -522,8 +544,19 @@ function NightView() {
               
               {isActionLocked && (
                   <div className="p-4 text-center text-[10px] text-zinc-500 uppercase tracking-widest font-bold bg-white/5 rounded-xl border border-white/5">
-                     Choice is locked for the night
+                     {me.actionTarget === 'skip' ? 'Decision: Stay Hidden (Action Skipped)' : 'Choice is locked for the night'}
                   </div>
+              )}
+
+              {/* Vigilante Skip Option */}
+              {me.roleId?.toLowerCase() === 'police' && !isActionLocked && me.isAlive && (
+                  <button 
+                    onClick={() => performAction('skip')}
+                    className="w-full flex items-center justify-center gap-3 p-4 border border-zinc-800 rounded-2xl text-zinc-500 hover:text-zinc-300 hover:border-accent/40 transition-all font-bold uppercase tracking-widest text-[10px] group"
+                  >
+                    <ShieldOff className="w-4 h-4 group-hover:text-accent transition-colors" />
+                    Stay Hidden (Skip Night Action)
+                  </button>
               )}
             </div>
           </div>
@@ -532,35 +565,87 @@ function NightView() {
 
       {me.isHost && (
           <div className="pt-12 space-y-8">
-             {/* Host-Only Ready Check */}
-             <div className="max-w-md mx-auto glass p-6 rounded-2xl border-white/5 space-y-4">
-                <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold text-center border-b border-white/5 pb-2">Night Tactical Overview</h4>
-                <div className="space-y-3">
-                   {/* Roles that have night actions */}
-                   {['mafia', 'godfather', 'doctor', 'detective', 'police', 'mayor'].map(roleId => {
-                      const totalWithRole = players.filter(p => p.roleId === roleId && p.isAlive).length;
-                      if (totalWithRole === 0) return null;
-                      const readyCount = players.filter(p => p.roleId === roleId && p.isAlive && p.actionTarget).length;
-                      const role = ROLES[roleId.toUpperCase()];
-                      return (
-                        <div key={roleId} className="flex justify-between items-center bg-black/20 p-2 rounded-lg">
-                           <span className="text-zinc-400 text-sm font-cinzel">{role.name}</span>
-                           <div className="flex items-center gap-2">
-                              <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                 <div 
-                                   className={`h-full transition-all ${readyCount === totalWithRole ? 'bg-green-500' : 'bg-accent'}`} 
-                                   style={{ width: `${(readyCount/totalWithRole) * 100}%` }}
-                                 />
-                              </div>
-                              <span className={`text-[10px] font-bold ${readyCount === totalWithRole ? 'text-green-500' : 'text-zinc-500'}`}>
-                                 {readyCount} / {totalWithRole}
-                              </span>
-                           </div>
+             {/* Host-Only Toggle or Scanning State */}
+             <div className="flex justify-center flex-col items-center gap-4">
+                {canShowOverview ? (
+                    <button 
+                      onClick={() => setShowOverview(!showOverview)}
+                      className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-accent hover:bg-accent/20 transition-all shadow-red"
+                    >
+                      <Search className="w-4 h-4" />
+                      {showOverview ? 'Disconnect Overview' : 'Infiltrate Tactical Overview'}
+                    </button>
+                ) : (
+                    <div className="flex flex-col items-center gap-3 opacity-40">
+                        <div className="w-48 h-1 bg-zinc-800 rounded-full overflow-hidden relative">
+                             <motion.div 
+                                initial={{ left: '-100%' }}
+                                animate={{ left: '100%' }}
+                                transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                                className="absolute top-0 w-full h-full bg-accent"
+                             />
                         </div>
-                      );
-                   })}
-                </div>
+                        <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-zinc-500">Decrypting Shadows...</span>
+                    </div>
+                )}
              </div>
+
+             <AnimatePresence>
+                 {showOverview && (
+                    <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="max-w-md mx-auto glass p-6 rounded-2xl border-white/5 space-y-4 shadow-red">
+                            <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold text-center border-b border-white/5 pb-2">Night Tactical Overview</h4>
+                            <div className="space-y-3">
+                               {/* Roles that have night actions */}
+                               {['syndicate', 'doctor', 'detective', 'police', 'mayor'].map(type => {
+                                  let totalWithRole = 0;
+                                  let readyCount = 0;
+                                  let label = '';
+
+                                  if (type === 'syndicate') {
+                                      const mafiaAssigned = players.filter(p => ['mafia', 'godfather'].includes(p.roleId?.toLowerCase() || ''));
+                                      if (mafiaAssigned.length === 0) return null;
+                                      
+                                      const allMafiaDead = mafiaAssigned.every(p => !p.isAlive);
+                                      totalWithRole = 1;
+                                      readyCount = (room.mafia_target || allMafiaDead) ? 1 : 0;
+                                      label = 'The Syndicate';
+                                  } else {
+                                      const roleAssigned = players.filter(p => p.roleId === type);
+                                      if (roleAssigned.length === 0) return null;
+                                      
+                                      totalWithRole = roleAssigned.length;
+                                      readyCount = roleAssigned.filter(p => !p.isAlive || p.actionTarget).length;
+                                      label = ROLES[type.toUpperCase()]?.name || 'CITIZEN';
+                                  }
+
+                                  return (
+                                    <div key={type} className="flex justify-between items-center bg-black/20 p-2 rounded-lg">
+                                       <span className="text-zinc-400 text-sm font-cinzel">{label}</span>
+                                       <div className="flex items-center gap-2">
+                                          <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                             <div 
+                                               className={`h-full transition-all ${readyCount === totalWithRole ? 'bg-green-500/80' : 'bg-accent/80'}`} 
+                                               style={{ width: `${(readyCount/totalWithRole) * 100}%` }}
+                                             />
+                                          </div>
+                                          <span className={`text-[10px] font-bold ${readyCount === totalWithRole ? 'text-green-500' : 'text-zinc-500'}`}>
+                                             {readyCount} / {totalWithRole}
+                                          </span>
+                                       </div>
+                                    </div>
+                                  );
+                               })}
+                            </div>
+                        </div>
+                    </motion.div>
+                 )}
+             </AnimatePresence>
 
              <div className="text-center">
                 <button 
@@ -673,21 +758,58 @@ function VotingView() {
         <div className="space-y-4">
           <h4 className="text-xs text-zinc-500 uppercase tracking-widest font-bold px-2">Casting Ballot</h4>
           <div className="grid grid-cols-1 gap-3">
-            {alivePlayers.map(p => (
-              <button 
-                key={p.id}
-                onClick={() => !isDead && voteForPlayer(p.id)}
-                disabled={isDead || p.id === me.id}
-                className={`flex items-center justify-between p-5 rounded-2xl transition-all border group relative overflow-hidden ${
-                    myVote === p.id 
-                    ? 'bg-red-500 border-red-400 text-white shadow-lg shadow-red-900/40' 
-                    : 'glass border-white/5 hover:border-zinc-500 text-zinc-400'
-                } disabled:opacity-50`}
-              >
-                <span className="font-outfit text-xl font-medium">{p.name}</span>
-                {myVote === p.id && <motion.div layoutId="vote-check" className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Your Suspect</motion.div>}
-              </button>
-            ))}
+            {[...alivePlayers].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
+              const votersForThisPlayer = alivePlayers.filter(voter => voter.voteTarget === p.id);
+              const voteCount = votersForThisPlayer.length;
+              
+              return (
+                <button 
+                  key={p.id}
+                  onClick={() => !isDead && voteForPlayer(p.id)}
+                  disabled={isDead || p.id === me.id}
+                  className={`flex items-center justify-between p-5 rounded-2xl transition-all border group relative overflow-hidden min-h-[85px] ${
+                      myVote === p.id 
+                      ? 'bg-red-500 border-red-400 text-white shadow-lg shadow-red-900/40' 
+                      : 'glass border-white/5 hover:border-zinc-500 text-zinc-400'
+                  } disabled:opacity-50`}
+                >
+                  <div className="flex flex-col items-start translate-y-0.5 max-w-[70%]">
+                    <span className="font-outfit text-xl font-medium truncate w-full text-left">{p.name}</span>
+                    <div className="flex flex-wrap gap-1 mt-2 min-h-[22px]">
+                         {votersForThisPlayer.map(v => (
+                             <motion.span 
+                               initial={{ scale: 0 }}
+                               animate={{ scale: 1 }}
+                               key={v.id} 
+                               className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-tighter ${v.id === me.id ? 'bg-white text-black' : (myVote === p.id ? 'bg-black/20 text-white' : 'bg-black/40 text-white/70')}`}
+                             >
+                                 {v.id === me.id ? 'YOU' : v.name.split(' ')[0]}
+                             </motion.span>
+                         ))}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col items-end min-w-[50px]">
+                    <AnimatePresence mode="popLayout">
+                        {voteCount > 0 ? (
+                            <motion.div 
+                                key={`count-${p.id}-${voteCount}`}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="flex flex-col items-end"
+                            >
+                                <span className="text-3xl font-cinzel font-bold leading-none">{voteCount}</span>
+                                <span className="text-[10px] uppercase tracking-widest opacity-60 font-bold">Votes</span>
+                            </motion.div>
+                        ) : (
+                            <div className="h-[42px]" /> /* Vertical spacer */
+                        )}
+                    </AnimatePresence>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           {isDead && (
               <div className="p-4 bg-red-950/20 border border-red-500/20 rounded-2xl text-red-400 text-sm italic text-center">
@@ -720,6 +842,44 @@ function VotingView() {
            )}
         </div>
       </div>
+    </motion.div>
+  );
+}
+
+function VerdictView() {
+  const { room, me, nextPhase } = useGame();
+  
+  if (!room || !me) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="p-8 max-w-4xl mx-auto space-y-12 min-h-[60vh] flex flex-col justify-center"
+    >
+      <div className="text-center space-y-4">
+        <Shield className="w-20 h-20 mx-auto text-zinc-600 mb-4" />
+        <h2 className="text-5xl font-cinzel text-accent tracking-[0.2em]">THE TOWN'S VERDICT</h2>
+      </div>
+
+      <div className="glass p-12 rounded-[3xl] border-white/5 bg-accent/5 backdrop-blur-xl shadow-2xl relative overflow-hidden">
+         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-accent to-transparent opacity-50" />
+         <p className="text-3xl text-zinc-200 font-outfit leading-relaxed italic text-center">
+            "{room.last_vote_summary?.message || 'The crowd disperses in silence...'}"
+         </p>
+      </div>
+
+      {me.isHost && (
+          <div className="text-center pt-8">
+             <button 
+                onClick={nextPhase}
+                className="px-16 py-5 bg-zinc-100 text-black font-cinzel text-xl rounded-full hover:bg-white transition-all shadow-2xl shadow-white/5 group"
+             >
+                COMMENCE NIGHTFALL
+             </button>
+             <p className="mt-4 text-[10px] text-zinc-600 uppercase tracking-widest font-bold">Only the host can proceed to the shadows</p>
+          </div>
+      )}
     </motion.div>
   );
 }
@@ -808,6 +968,10 @@ function MafiaApp() {
     return <VotingView />;
   }
 
+  if (room.status === 'Verdict') {
+    return <VerdictView />;
+  }
+
   if (room.status === 'Finished') {
     return <GameOverView />;
   }
@@ -827,29 +991,69 @@ function MafiaApp() {
   );
 }
 
+function PlayerIdentity() {
+  const { me, room } = useGame();
+  if (!me) return null;
+
+  const role = me.roleId ? ROLES[me.roleId.toUpperCase()] : null;
+  const isLobby = room?.status === 'Lobby';
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      className="flex items-center gap-4 bg-white/5 border border-white/5 px-4 py-2 rounded-2xl backdrop-blur-sm"
+    >
+      <div className="flex flex-col items-end">
+        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-black leading-none mb-1">Your Identity</span>
+        <div className="flex items-center gap-2">
+            <span className="font-outfit font-medium text-sm text-zinc-200">{me.name}</span>
+            {role && !isLobby && (
+                <>
+                    <div className="w-1 h-1 rounded-full bg-zinc-700" />
+                    <span className={`font-cinzel text-xs font-bold ${role.faction === 'Mafia' ? 'text-red-500' : 'text-accent'}`}>
+                        {role.name}
+                    </span>
+                </>
+            )}
+        </div>
+      </div>
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${role?.faction === 'Mafia' && !isLobby ? 'bg-red-950/30 border-red-500/30 text-red-500' : 'bg-zinc-800 border-white/10 text-zinc-400'}`}>
+         {role && !isLobby ? <Shield className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+      </div>
+    </motion.div>
+  );
+}
+
 export default function Game() {
   return (
     <GameProvider>
       <div className="min-h-screen bg-background text-foreground bg-[radial-gradient(circle_at_50%_-20%,rgba(255,0,0,0.05),transparent_40%)]">
-        <header className="p-6 flex justify-between items-center border-b border-white/5">
-          <div className="flex items-center gap-2">
+        <header className="fixed top-0 left-0 right-0 z-50 p-6 flex justify-between items-center border-b border-white/5 bg-background/80 backdrop-blur-md">
+          <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-accent rounded flex items-center justify-center font-cinzel font-bold text-white shadow-red">M</div>
-            <span className="font-cinzel tracking-widest font-bold">MAFIA ONLINE</span>
+            <div className="flex flex-col">
+                <span className="font-cinzel tracking-widest font-bold leading-none">MAFIA</span>
+                <span className="text-[8px] tracking-[0.3em] font-bold text-zinc-500">ONLINE</span>
+            </div>
           </div>
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1">
-                <HelpCircle className="w-3 h-3" />
-                RULES
-            </a>
-            <a href="#" className="hidden sm:flex text-xs text-zinc-500 hover:text-zinc-300 items-center gap-1">
-                <Info className="w-3 h-3" />
-                ROLES
-            </a>
+          
+          <div className="flex items-center gap-8">
+            <div className="hidden md:flex items-center gap-6">
+                <a href="#" className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest">
+                    <HelpCircle className="w-3 h-3 text-accent" />
+                    RULES
+                </a>
+                <a href="#" className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest">
+                    <Info className="w-3 h-3 text-accent" />
+                    ROLES
+                </a>
+            </div>
+            <PlayerIdentity />
           </div>
         </header>
 
-        <main className="relative">
-          {/* Subtle background pulse */}
+        <main className="relative pt-24">
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
              <div className="absolute -top-[50%] -left-[20%] w-full h-full bg-accent/5 rounded-full blur-[120px] animate-pulse-slow" />
              <div className="absolute -bottom-[50%] -right-[20%] w-full h-full bg-zinc-800/10 rounded-full blur-[120px]" />

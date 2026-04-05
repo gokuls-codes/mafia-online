@@ -7,10 +7,11 @@ CREATE TABLE IF NOT EXISTS rooms (
   name TEXT NOT NULL,
   host_id TEXT NOT NULL,
   join_code TEXT UNIQUE,
-  status TEXT DEFAULT 'Lobby' CHECK (status IN ('Lobby', 'Night', 'Day', 'Voting', 'Finished')),
+  status TEXT DEFAULT 'Lobby' CHECK (status IN ('Lobby', 'Night', 'Day', 'Voting', 'Verdict', 'Finished')),
   winner_faction TEXT,
   settings JSONB DEFAULT '{"roleCounts": {"villager": 3, "mafia": 1, "doctor": 1}, "timerNight": 40, "timerDay": 90, "timerVoting": 45}'::JSONB,
   last_night_summary JSONB DEFAULT '{}'::JSONB,
+  last_vote_summary JSONB DEFAULT '{}'::JSONB,
   mafia_target UUID REFERENCES players(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS players (
   is_host BOOLEAN DEFAULT FALSE,
   vote_target UUID REFERENCES players(id),
   action_target UUID REFERENCES players(id),
+  last_action_target UUID REFERENCES players(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

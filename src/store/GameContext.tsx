@@ -87,6 +87,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: data.created_at,
             join_code: data.join_code,
             last_night_summary: data.last_night_summary,
+            last_vote_summary: data.last_vote_summary,
             mafia_target: data.mafia_target,
           } as any);
         }
@@ -117,13 +118,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: data.created_at,
           join_code: data.join_code,
           last_night_summary: data.last_night_summary,
+          last_vote_summary: data.last_vote_summary,
           mafia_target: data.mafia_target,
         } as any);
       }
     };
 
     const fetchPlayers = async () => {
-      const { data } = await supabase.from('players').select('*').eq('room_id', roomId);
+      const { data } = await supabase.from('players')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true });
       if (data) {
         const mappedPlayers = data.map((p: any) => ({
           id: p.id,
@@ -135,7 +140,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAlive: p.is_alive,
           isHost: p.is_host,
           voteTarget: p.vote_target,
-          actionTarget: p.action_target
+          actionTarget: p.action_target,
+          lastActionTarget: p.last_action_target
         }));
         setPlayers(mappedPlayers);
         const myPlayer = mappedPlayers.find(p => p.userId === userId);
@@ -286,42 +292,48 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (room.status === 'Night') {
       // --- NIGHT RESOLUTION LOGIC ---
       
-      // 1. Get all action targets
-      const alivePlayers = players.filter(p => p.isAlive);
+      // 1. Get the TRUTHY latest data from the DB to avoid race conditions with local state
+      const { data: latestPlayers } = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
+      if (!latestPlayers) return;
+
+      const alivePlayers = latestPlayers.filter(p => p.is_alive);
       const mafiaVictimId = room.mafia_target;
-      const doctorSaves = alivePlayers.filter(p => p.roleId === 'doctor' && p.actionTarget).map(p => p.actionTarget);
-      const policeTargets = alivePlayers.filter(p => p.roleId === 'police' && p.actionTarget).map(p => p.actionTarget);
+      const doctorSaves = alivePlayers.filter(p => p.role_id === 'doctor' && p.action_target).map(p => p.action_target);
+      const policeActions = alivePlayers.filter(p => p.role_id === 'police' && p.action_target);
       
-      // 2. Already identified mafiaVictimId from room.mafia_target
       const deadIds = new Set<string>();
       const deadNames: string[] = [];
 
-      // 3. Check if victim was saved
+      // 2. Mafia Victim Check
       if (mafiaVictimId) {
-          const victim = players.find(p => p.id === mafiaVictimId);
+          const victim = latestPlayers.find(p => p.id === mafiaVictimId);
           if (victim && !doctorSaves.includes(mafiaVictimId)) {
               deadIds.add(mafiaVictimId);
               deadNames.push(victim.name);
           }
       }
 
-      // 4. Police (Vigilante) Logic
-      for (const pId of policeTargets) {
+      // 3. Police (Vigilante) Logic
+      for (const vigilante of policeActions) {
+          const pId = vigilante.action_target;
           if (!pId) continue;
-          const target = players.find(p => p.id === pId);
-          const vigilante = players.find(p => p.roleId === 'police');
-          if (target && vigilante) {
-              if (target.faction === 'Mafia' || target.roleId === 'serial_killer') {
-                  if (!deadIds.has(pId)) {
-                      deadIds.add(pId);
-                      deadNames.push(target.name);
-                  }
-              } else {
-                  // Killed an innocent! Vigilante dies too.
-                  if (!deadIds.has(vigilante.id)) {
-                      deadIds.add(vigilante.id);
-                      deadNames.push(vigilante.name);
-                  }
+          
+          const target = latestPlayers.find(p => p.id === pId);
+          if (!target) continue;
+
+          // Case-insensitive faction and SK check
+          const isHostile = target.faction?.toLowerCase() === 'mafia' || target.role_id === 'serial_killer';
+          
+          if (isHostile) {
+              if (!deadIds.has(pId)) {
+                  deadIds.add(pId);
+                  deadNames.push(target.name);
+              }
+          } else {
+              // Killed an innocent! Vigilante dies from guilt too.
+              if (!deadIds.has(vigilante.id)) {
+                  deadIds.add(vigilante.id);
+                  deadNames.push(vigilante.name);
               }
           }
       }
@@ -353,12 +365,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 : `${deadNames.slice(0, -1).join(', ')} and ${deadNames.slice(-1)} were found dead.`}`
       };
 
+      for (const p of latestPlayers) {
+          await supabase.from('players').update({ 
+               last_action_target: p.action_target,
+               action_target: null,
+               vote_target: null
+          }).eq('id', p.id);
+      }
+
       await supabase.from('rooms').update({ 
           status: 'Day', 
           last_night_summary: summary as any,
           mafia_target: null
       }).eq('id', roomId);
-      await supabase.from('players').update({ action_target: null }).eq('room_id', roomId);
       return; 
     }
 
@@ -386,26 +405,59 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const mayorAction = players.find(p => p.roleId === 'mayor' && p.isAlive);
       const isPardoned = winnerId && mayorAction?.actionTarget === winnerId;
 
+      // Prepare summary
+      const winner = players.find(p => p.id === winnerId);
+      const voteSummary = {
+          deadNames: (winnerId && !isPardoned) ? [winner?.name || 'Unknown'] : [],
+          message: isPardoned
+            ? `The mob has spoken, but the Mayor has granted ${winner?.name} an executive pardon. No one was evicted today.`
+            : (winnerId 
+                ? `The town has reached a verdict. ${winner?.name} has been sentenced to death.`
+                : 'The town could not reach a clear majority. No one was evicted today.')
+      };
+
       if (winnerId && !isPardoned) {
           await supabase.from('players').update({ is_alive: false }).eq('id', winnerId);
       }
 
       // Check Victory
-      const allPlayersAfterVote = await supabase.from('players').select('*').eq('room_id', roomId);
-      const { winner } = checkWinConditions(allPlayersAfterVote.data || []);
+      const allPlayersAfterVote = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
+      const { winner: winFaction } = checkWinConditions(allPlayersAfterVote.data || []);
 
-      if (winner) {
+      if (winFaction) {
           await supabase.from('rooms').update({ 
               status: 'Finished', 
-              winner_faction: winner as Faction 
+              winner_faction: winFaction as Faction 
           }).eq('id', roomId);
           return;
       }
 
-      // Reset and move to Night
+      // Reset and move to Verdict
       await supabase.from('players').update({ vote_target: null, action_target: null }).eq('room_id', roomId);
-      await supabase.from('rooms').update({ status: 'Night' }).eq('id', roomId);
+      await supabase.from('rooms').update({ 
+          status: 'Verdict', 
+          last_vote_summary: voteSummary as any 
+      }).eq('id', roomId);
       return;
+    }
+
+    if (room.status === 'Verdict') {
+        const deadIds = room.last_vote_summary?.deadNames || [];
+        // The player is already officially deceased if listed (optional check)
+        // Check Victory before moving to Night
+        const allPlayersAfterVerdict = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
+        const { winner: winFaction } = checkWinConditions(allPlayersAfterVerdict.data || []);
+
+        if (winFaction) {
+            await supabase.from('rooms').update({ 
+                status: 'Finished', 
+                winner_faction: winFaction as Faction 
+            }).eq('id', roomId);
+            return;
+        }
+
+        await supabase.from('rooms').update({ status: 'Night' }).eq('id', roomId);
+        return;
     }
 
     if (room.status === 'Finished') {
@@ -415,7 +467,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
     }
 
-    const phases: GameStatus[] = ['Lobby', 'Night', 'Day', 'Voting', 'Finished'];
+    const phases: GameStatus[] = ['Lobby', 'Night', 'Day', 'Voting', 'Verdict', 'Finished'];
     const currentIndex = phases.indexOf(room.status);
     const nextIndex = (currentIndex + 1) % phases.length;
     await supabase.from('rooms').update({ status: phases[nextIndex] }).eq('id', roomId);
