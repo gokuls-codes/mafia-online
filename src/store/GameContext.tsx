@@ -28,23 +28,29 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Use sessionStorage instead of localStorage so that different tabs 
-    // count as different players (useful for testing)
+    // 1. Initialize User ID
     let id = sessionStorage.getItem('mafia_user_id');
     if (!id) {
       id = crypto.randomUUID();
       sessionStorage.setItem('mafia_user_id', id);
     }
-    console.log('My User ID:', id);
     setUserId(id);
+
+    // 2. Auto-resume Room ID
+    const savedRoomId = sessionStorage.getItem('mafia_room_id');
+    if (savedRoomId && !roomId) {
+      setRoomId(savedRoomId);
+    }
   }, []);
 
   useEffect(() => {
     // Check URL for join code
     const params = new URLSearchParams(window.location.search);
     const codeFromUrl = params.get('code');
+    
     if (codeFromUrl && !roomId) {
-      // We'll trust the page component to handle the "Join" UI if this exists
+      // Room detection from URL is handled by the landing page
+      // but we log it here for context
       console.log('Detected join code from URL:', codeFromUrl);
     }
   }, [roomId]);
@@ -171,6 +177,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (playerError) throw playerError;
 
+    sessionStorage.setItem('mafia_room_id', roomData.id);
     setRoomId(roomData.id);
     return roomData.id;
   };
@@ -213,6 +220,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     if (error) throw error;
+    sessionStorage.setItem('mafia_room_id', id);
     setRoomId(id);
   };
 
