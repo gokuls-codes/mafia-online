@@ -360,7 +360,12 @@ function Lobby() {
                 <Users className="w-5 h-5 text-zinc-500" />
               </div>
               <div className="flex flex-col">
-                <span className="font-outfit font-medium flex items-center gap-2">
+                <span
+                  className="font-outfit font-medium flex items-center gap-2"
+                  style={{
+                    color: p.id === me?.id ? "red" : "white",
+                  }}
+                >
                   {p.name}
                   {p.isHost && <Shield className="w-3 h-3 text-accent" />}
                   {p.id === me?.id && (
@@ -630,11 +635,22 @@ function NightView() {
 
             {!hasAction && (
               <div className="pt-8 flex flex-col items-center gap-4 text-zinc-600 italic">
-                <Moon className="w-12 h-12 opacity-20" />
-                <p className="text-center">
-                  The city sleeps... but the shadows are moving. Try to make it
-                  to morning.
-                </p>
+                {isDead ? (
+                  <>
+                    <Skull className="w-12 h-12 text-red-500/20 animate-pulse" />
+                    <p className="text-xl font-cinzel text-red-500/30 uppercase tracking-widest text-center">
+                      The shadows have claimed you
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-12 h-12 opacity-20" />
+                    <p className="text-center text-zinc-400">
+                      The city sleeps... but the shadows are moving. Try to make
+                      it to morning.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1037,7 +1053,7 @@ function VotingView() {
                   <button
                     key={p.id}
                     onClick={() => !isDead && voteForPlayer(p.id)}
-                    disabled={isDead || p.id === me.id}
+                    disabled={isDead}
                     className={`flex items-center justify-between p-5 rounded-2xl transition-all border group relative overflow-hidden min-h-[85px] ${
                       myVote === p.id
                         ? "bg-red-500 border-red-400 text-white shadow-lg shadow-red-900/40"
