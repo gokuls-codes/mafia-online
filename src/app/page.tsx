@@ -253,7 +253,7 @@ function RoleBadge({
 }
 
 function Lobby() {
-  const { room, players, me, startGame, updateSettings } = useGame();
+  const { room, players, me, startGame, updateSettings, kickPlayer } = useGame();
 
   if (!room) return null;
 
@@ -378,6 +378,15 @@ function Lobby() {
                   {p.isAlive ? "Status: Active" : "Status: Deceased"}
                 </span>
               </div>
+              {me?.isHost && p.id !== me.id && (
+                <button
+                  onClick={() => kickPlayer(p.id)}
+                  className="ml-auto p-2 bg-red-900/10 hover:bg-red-900/30 text-red-500 rounded-lg transition-all border border-red-500/10 hover:scale-110 active:scale-95"
+                  title="Kick Participant"
+                >
+                  <UserX className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
 

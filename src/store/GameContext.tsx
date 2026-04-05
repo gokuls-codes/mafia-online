@@ -18,6 +18,7 @@ interface GameContextType {
   performAction: (targetId: string) => Promise<void>;
   voteForPlayer: (targetId: string) => Promise<void>;
   confirmMafiaTarget: (targetId: string) => Promise<void>;
+  kickPlayer: (playerId: string) => Promise<void>;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -145,7 +146,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
         setPlayers(mappedPlayers);
         const myPlayer = mappedPlayers.find(p => p.userId === userId);
-        if (myPlayer) setMe(myPlayer);
+        if (myPlayer) {
+          setMe(myPlayer);
+        } else if (roomId && userId) {
+          // If we were in a room but are no longer in the player list, we've been kicked
+          setRoomId(null);
+          setRoom(null);
+          setPlayers([]);
+          setMe(null);
+          sessionStorage.removeItem('mafia_room_id');
+        }
       }
     };
 
@@ -567,6 +577,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.from('players').update({ vote_target: targetId }).eq('id', me.id);
   };
 
+  const kickPlayer = async (playerId: string) => {
+    if (!me?.isHost) throw new Error('Only the host can kick players.');
+    const { error } = await supabase.from('players').delete().eq('id', playerId);
+    if (error) throw error;
+  };
+
   return (
     <GameContext.Provider value={{
       room,
@@ -581,7 +597,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       nextPhase,
       performAction,
       voteForPlayer,
-      confirmMafiaTarget
+      confirmMafiaTarget,
+      kickPlayer
     }}>
       {children}
     </GameContext.Provider>
