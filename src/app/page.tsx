@@ -1401,55 +1401,90 @@ function PlayerIdentity() {
   );
 }
 
+function GameContent() {
+  const { room } = useGame();
+
+  // Dynamic background classes based on phase
+  const isNight = room?.status === "Night";
+  const isDay = ["Day", "Voting", "Verdict"].includes(room?.status || "");
+  const isFinished = room?.status === "Finished";
+
+  const backgroundColor = isNight
+    ? "#020203" // Deep Night
+    : isDay
+      ? "#121218" // Twilight/Dawn Grey
+      : "#0a0a0a"; // Base Lobby
+
+  const gradientColor = isNight
+    ? "rgba(255, 0, 0, 0.2)" // More pronounced crimson pulse for night
+    : isDay
+      ? "rgba(255, 200, 50, 0.12)" // Clear golden dawn glow for day
+      : isFinished
+        ? "rgba(0, 255, 120, 0.12)" // Intense success glow
+        : "rgba(255, 0, 0, 0.08)"; // Subtle lobby glow
+
+  return (
+    <div
+      className="min-h-screen text-foreground transition-all duration-1000 ease-in-out flex flex-col"
+      style={{
+        backgroundColor,
+        backgroundImage: `radial-gradient(circle at 50% -10%, ${gradientColor}, transparent 70%)`,
+      }}
+    >
+      <header className="fixed top-0 left-0 right-0 z-50 p-6 flex justify-between items-center border-b border-white/5 bg-background/80 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-accent rounded flex items-center justify-center font-cinzel font-bold text-white shadow-red">
+            M
+          </div>
+          <div className="flex flex-col">
+            <span className="font-cinzel tracking-widest font-bold leading-none">
+              MAFIA
+            </span>
+            <span className="text-[8px] tracking-[0.3em] font-bold text-zinc-500">
+              ONLINE
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-6">
+            <a
+              href="#"
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest"
+            >
+              <HelpCircle className="w-3 h-3 text-accent" />
+              RULES
+            </a>
+            <a
+              href="#"
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest"
+            >
+              <Info className="w-3 h-3 text-accent" />
+              ROLES
+            </a>
+          </div>
+          <PlayerIdentity />
+        </div>
+      </header>
+
+      <main className="relative pt-24 flex-1 overflow-y-auto">
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div
+            className={`absolute -top-[50%] -left-[20%] w-full h-full rounded-full blur-[120px] transition-all duration-1000 ${isNight ? "bg-red-900/10" : isDay ? "bg-amber-900/10" : "bg-accent/5"} animate-pulse-slow`}
+          />
+          <div className="absolute -bottom-[50%] -right-[20%] w-full h-full bg-zinc-800/10 rounded-full blur-[120px]" />
+        </div>
+
+        <MafiaApp />
+      </main>
+    </div>
+  );
+}
+
 export default function Game() {
   return (
     <GameProvider>
-      <div className="min-h-screen bg-background text-foreground bg-[radial-gradient(circle_at_50%_-20%,rgba(255,0,0,0.05),transparent_40%)]">
-        <header className="fixed top-0 left-0 right-0 z-50 p-6 flex justify-between items-center border-b border-white/5 bg-background/80 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-accent rounded flex items-center justify-center font-cinzel font-bold text-white shadow-red">
-              M
-            </div>
-            <div className="flex flex-col">
-              <span className="font-cinzel tracking-widest font-bold leading-none">
-                MAFIA
-              </span>
-              <span className="text-[8px] tracking-[0.3em] font-bold text-zinc-500">
-                ONLINE
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-8">
-            <div className="hidden md:flex items-center gap-6">
-              <a
-                href="#"
-                className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest"
-              >
-                <HelpCircle className="w-3 h-3 text-accent" />
-                RULES
-              </a>
-              <a
-                href="#"
-                className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-bold tracking-widest"
-              >
-                <Info className="w-3 h-3 text-accent" />
-                ROLES
-              </a>
-            </div>
-            <PlayerIdentity />
-          </div>
-        </header>
-
-        <main className="relative pt-24">
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute -top-[50%] -left-[20%] w-full h-full bg-accent/5 rounded-full blur-[120px] animate-pulse-slow" />
-            <div className="absolute -bottom-[50%] -right-[20%] w-full h-full bg-zinc-800/10 rounded-full blur-[120px]" />
-          </div>
-
-          <MafiaApp />
-        </main>
-      </div>
+      <GameContent />
     </GameProvider>
   );
 }
