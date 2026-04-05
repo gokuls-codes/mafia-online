@@ -19,7 +19,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { ROLES, Faction } from "@/types/game";
+import { ROLES, Faction, Player } from "@/types/game";
 
 function LandingPage({
   onCreate,
@@ -252,6 +252,21 @@ function RoleBadge({
   );
 }
 
+function RoleRevealBadge({ p }: { p: Player }) {
+  const { me } = useGame();
+  if (me?.isAlive !== false || !p.roleId) return null;
+  const role = ROLES[p.roleId.toUpperCase()];
+  return (
+    <span className={`text-[10px] px-2 py-0.5 rounded border font-bold uppercase tracking-tighter ${
+      role?.faction === "Mafia" ? "bg-red-500/10 border-red-500/20 text-red-500" :
+      role?.faction === "Town" ? "bg-accent/10 border-accent/20 text-accent" :
+      "bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-500"
+    }`}>
+      {role?.name || p.roleId}
+    </span>
+  );
+}
+
 function Lobby() {
   const { room, players, me, startGame, updateSettings, kickPlayer } = useGame();
 
@@ -373,6 +388,7 @@ function Lobby() {
                       (You)
                     </span>
                   )}
+                  <RoleRevealBadge p={p} />
                 </span>
                 <span className="text-[10px] text-zinc-600 uppercase tracking-widest">
                   {p.isAlive ? "Status: Active" : "Status: Deceased"}
@@ -436,8 +452,14 @@ function Lobby() {
 }
 
 function NightView() {
-  const { room, players, me, performAction, confirmMafiaTarget, nextPhase } =
-    useGame();
+  const { 
+    room, 
+    players, 
+    me, 
+    performAction, 
+    confirmMafiaTarget, 
+    nextPhase 
+  } = useGame();
 
   if (!room || !me) return null;
 
@@ -643,22 +665,40 @@ function NightView() {
             )}
 
             {!hasAction && (
-              <div className="pt-8 flex flex-col items-center gap-4 text-zinc-600 italic">
+              <div className="pt-8 space-y-6">
                 {isDead ? (
-                  <>
-                    <Skull className="w-12 h-12 text-red-500/20 animate-pulse" />
-                    <p className="text-xl font-cinzel text-red-500/30 uppercase tracking-widest text-center">
-                      The shadows have claimed you
-                    </p>
-                  </>
+                  <div className="space-y-6">
+                    <div className="flex flex-col items-center gap-4 text-zinc-600 italic">
+                      <Skull className="w-12 h-12 text-red-500/20 animate-pulse" />
+                      <p className="text-xl font-cinzel text-red-500/30 uppercase tracking-[0.3em] text-center">
+                        THE VEIL IS LIFTED
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3 pt-6 border-t border-white/5">
+                      <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold text-center mb-4">
+                        Ghost Revelation
+                      </h4>
+                      <div className="grid grid-cols-1 gap-2">
+                        {players.map((p) => (
+                          <div key={p.id} className="glass p-3 rounded-xl flex items-center justify-between">
+                            <span className={`font-outfit text-sm ${p.isAlive ? "text-zinc-300" : "text-zinc-600 line-through"}`}>
+                              {p.name}
+                            </span>
+                            <RoleRevealBadge p={p} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
-                  <>
+                  <div className="flex flex-col items-center gap-4 text-zinc-600 italic">
                     <Moon className="w-12 h-12 opacity-20" />
                     <p className="text-center text-zinc-400">
                       The city sleeps... but the shadows are moving. Try to make
                       it to morning.
                     </p>
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -955,9 +995,10 @@ function DayView() {
                     )}
                   </div>
                   <span
-                    className={`font-outfit text-lg ${p.isAlive ? "text-zinc-200" : "text-zinc-500 line-through"}`}
+                    className={`font-outfit text-lg flex items-center gap-2 ${p.isAlive ? "text-zinc-200" : "text-zinc-500 line-through"}`}
                   >
                     {p.name}
+                    <RoleRevealBadge p={p} />
                   </span>
                 </div>
                 {!p.isAlive && (
@@ -1070,8 +1111,9 @@ function VotingView() {
                     } disabled:opacity-50`}
                   >
                     <div className="flex flex-col items-start translate-y-0.5 max-w-[70%]">
-                      <span className="font-outfit text-xl font-medium truncate w-full text-left">
+                      <span className="font-outfit text-xl font-medium truncate w-full text-left flex items-center gap-3">
                         {p.name}
+                        <RoleRevealBadge p={p} />
                       </span>
                       <div className="flex flex-wrap gap-1 mt-2 min-h-[22px]">
                         {votersForThisPlayer.map((v) => (
