@@ -551,17 +551,27 @@ function NightView() {
               <h3 className="text-4xl font-cinzel text-accent mt-1">
                 {role?.name || "CITIZEN"}
               </h3>
+              {me.isAlive === false && (
+                <div className="mt-2 flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg w-fit">
+                  <Skull className="w-3 h-3 text-red-500" />
+                  <span className="text-[10px] font-cinzel font-black tracking-widest text-red-500">
+                    DECEASED
+                  </span>
+                </div>
+              )}
             </div>
             <p className="text-zinc-400 text-sm leading-relaxed">
               {role?.description}
             </p>
-            <div className="pt-6 border-t border-white/5 font-cinzel text-xl text-zinc-300">
-              {isDetectiveLocked
-                ? "INVESTIGATION COMPLETE"
-                : isMafiaRole && room.mafia_target
-                  ? "STRIKE COORDINATED"
-                  : getActionPrompt()}
-            </div>
+            {me.isAlive && (
+              <div className="pt-6 border-t border-white/5 font-cinzel text-xl text-zinc-300">
+                {isDetectiveLocked
+                  ? "INVESTIGATION COMPLETE"
+                  : isMafiaRole && room.mafia_target
+                    ? "STRIKE COORDINATED"
+                    : getActionPrompt()}
+              </div>
+            )}
 
             {activeTargetId && (
               <div className="space-y-3">
@@ -1225,9 +1235,11 @@ function GameOverView() {
         >
           <Skull
             className={`w-20 h-20 mx-auto mb-4 ${
-              winner === "Mafia" ? "text-red-500" : 
-              winner === "Jester" ? "text-fuchsia-500" : 
-              "text-green-500"
+              winner === "Mafia"
+                ? "text-red-500"
+                : winner === "Jester"
+                  ? "text-fuchsia-500"
+                  : "text-green-500"
             }`}
           />
           <h1 className="text-7xl font-cinzel font-black tracking-tighter drop-shadow-2xl">
@@ -1238,8 +1250,8 @@ function GameOverView() {
           {winner === "Town"
             ? "Justice has been served."
             : winner === "Jester"
-            ? "The joke is on you."
-            : "The city has fallen into darkness."}
+              ? "The joke is on you."
+              : "The city has fallen into darkness."}
         </p>
       </div>
 
@@ -1324,6 +1336,14 @@ function MafiaApp() {
           <span className="text-4xl font-cinzel block mb-2">
             {me?.roleId?.toUpperCase() || "STILL BREATHING"}
           </span>
+          {me?.isAlive === false && (
+            <div className="mb-4 flex items-center justify-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg w-fit mx-auto">
+              <Skull className="w-3 h-3 text-red-500" />
+              <span className="text-[10px] font-cinzel font-black tracking-widest text-red-500">
+                DECEASED
+              </span>
+            </div>
+          )}
           <p className="text-sm text-zinc-400">
             {me?.roleId
               ? ROLES[me.roleId.toUpperCase()]?.description
