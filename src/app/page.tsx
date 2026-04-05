@@ -1336,24 +1336,47 @@ function GameOverView() {
           The Final Reveal
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {players.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between p-4 bg-black/40 rounded-xl border border-white/5"
-            >
-              <div className="text-left">
-                <div className="font-outfit font-bold">{p.name}</div>
-                <div
-                  className={`text-[10px] uppercase font-bold tracking-widest ${p.faction === "Mafia" ? "text-red-500" : "text-green-500"}`}
-                >
-                  {ROLES[p.roleId?.toUpperCase() || ""]?.name || "VILLAGER"}
+          {players.map((p) => {
+            const isWinner = p.faction === winner;
+            return (
+              <div
+                key={p.id}
+                className={`flex items-center justify-between p-5 rounded-2xl border transition-all relative overflow-hidden ${
+                  isWinner
+                    ? "bg-accent/10 border-accent/40 shadow-[0_0_25px_-5px_rgba(var(--accent-rgb),0.3)]"
+                    : "bg-black/40 border-white/5 opacity-80"
+                }`}
+              >
+                {isWinner && (
+                  <div className="absolute top-0 right-0 p-1.5 bg-accent text-[8px] font-black text-white rounded-bl-lg uppercase tracking-widest z-10">
+                    Victor
+                  </div>
+                )}
+                <div className="text-left">
+                  <div
+                    className={`font-outfit font-bold text-lg ${isWinner ? "text-white" : "text-zinc-400"}`}
+                  >
+                    {p.name}
+                  </div>
+                  <div
+                    className={`text-[10px] uppercase font-bold tracking-widest ${p.faction === "Mafia" ? "text-red-500" : "text-green-500"}`}
+                  >
+                    {ROLES[p.roleId?.toUpperCase() || ""]?.name || "VILLAGER"}
+                  </div>
+                </div>
+                <div className="text-right flex flex-col items-end gap-1">
+                  <div className="text-[10px] text-zinc-500 font-bold uppercase">
+                    {p.isAlive ? "Survived" : "Eliminated"}
+                  </div>
+                  {isWinner ? (
+                    <Zap className="w-4 h-4 text-accent fill-accent animate-pulse" />
+                  ) : (
+                    <Skull className="w-4 h-4 text-zinc-800" />
+                  )}
                 </div>
               </div>
-              <div className="text-[10px] text-zinc-600 font-bold uppercase transition-all">
-                {p.isAlive ? "Survived" : "Eliminated"}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
