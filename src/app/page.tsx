@@ -257,18 +257,23 @@ function RoleRevealBadge({ p }: { p: Player }) {
   if (me?.isAlive !== false || !p.roleId) return null;
   const role = ROLES[p.roleId.toUpperCase()];
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded border font-bold uppercase tracking-tighter ${
-      role?.faction === "Mafia" ? "bg-red-500/10 border-red-500/20 text-red-500" :
-      role?.faction === "Town" ? "bg-accent/10 border-accent/20 text-accent" :
-      "bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-500"
-    }`}>
+    <span
+      className={`text-[10px] px-2 py-0.5 rounded border font-bold uppercase tracking-tighter ${
+        role?.faction === "Mafia"
+          ? "bg-red-500/10 border-red-500/20 text-red-500"
+          : role?.faction === "Town"
+            ? "bg-green-500/10 border-green-500/20 text-green-500"
+            : "bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-500"
+      }`}
+    >
       {role?.name || p.roleId}
     </span>
   );
 }
 
 function Lobby() {
-  const { room, players, me, startGame, updateSettings, kickPlayer } = useGame();
+  const { room, players, me, startGame, updateSettings, kickPlayer } =
+    useGame();
 
   if (!room) return null;
 
@@ -452,14 +457,8 @@ function Lobby() {
 }
 
 function NightView() {
-  const { 
-    room, 
-    players, 
-    me, 
-    performAction, 
-    confirmMafiaTarget, 
-    nextPhase 
-  } = useGame();
+  const { room, players, me, performAction, confirmMafiaTarget, nextPhase } =
+    useGame();
 
   if (!room || !me) return null;
 
@@ -674,15 +673,20 @@ function NightView() {
                         THE VEIL IS LIFTED
                       </p>
                     </div>
-                    
+
                     <div className="space-y-3 pt-6 border-t border-white/5">
                       <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold text-center mb-4">
                         Ghost Revelation
                       </h4>
-                      <div className="grid grid-cols-1 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         {players.map((p) => (
-                          <div key={p.id} className="glass p-3 rounded-xl flex items-center justify-between">
-                            <span className={`font-outfit text-sm ${p.isAlive ? "text-zinc-300" : "text-zinc-600 line-through"}`}>
+                          <div
+                            key={p.id}
+                            className="glass p-3 rounded-xl flex items-center justify-between px-4 py-1"
+                          >
+                            <span
+                              className={`font-outfit text-sm ${p.isAlive ? "text-zinc-300" : "text-zinc-600 line-through"}`}
+                            >
                               {p.name}
                             </span>
                             <RoleRevealBadge p={p} />
@@ -736,7 +740,10 @@ function NightView() {
                 >
                   <div className="flex flex-col items-start translate-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="font-outfit text-lg">{p.name}</span>
+                      <span className="font-outfit text-lg flex items-center px-2 py-1 gap-2">
+                        {p.name}
+                        <RoleRevealBadge p={p} />
+                      </span>
                       {["doctor", "mayor"].includes(
                         me.roleId?.toLowerCase() || "",
                       ) &&
