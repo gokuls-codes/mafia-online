@@ -325,12 +325,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isHostile = target.faction?.toLowerCase() === 'mafia' || target.role_id === 'serial_killer';
           
           if (isHostile) {
+              // Successfully killed a hostile target
               if (!deadIds.has(pId)) {
                   deadIds.add(pId);
                   deadNames.push(target.name);
               }
           } else {
-              // Killed an innocent! Vigilante dies from guilt too.
+              // Killed an innocent! ONLY the vigilante dies from guilt.
+              // (In this version, the bullet 'misses' or the Vigilante stops themselves, but the guilt remains)
               if (!deadIds.has(vigilante.id)) {
                   deadIds.add(vigilante.id);
                   deadNames.push(vigilante.name);
@@ -338,24 +340,37 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
       }
 
-      // 5. Apply deaths & Clear actions
-      for (const pId of Array.from(deadIds)) {
-          await supabase.from('players').update({ is_alive: false }).eq('id', pId);
-      }
+      // 4. Update Victory Condition Check
+      const allPlayersAfterNight = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
+      // Filter the local latestPlayers to reflect the deaths we just calculated
+      const playersAfterDeaths = latestPlayers.map(p => ({
+          ...p,
+          is_alive: deadIds.has(p.id) ? false : p.is_alive
+      }));
+      // 5. Check if we have a winner BEFORE resetting everyone, but we must still record the deaths
+      const { winner } = checkWinConditions(playersAfterDeaths as any);
 
-      // Check Victory
-      const allPlayersAfterNight = await supabase.from('players').select('*').eq('room_id', roomId);
-      const { winner } = checkWinConditions(allPlayersAfterNight.data || []);
+      // 6. Final Synchronized Update: Deaths, History, and Resets
+      // We do this BEFORE potentially returning so the Game Over screen has the dead players marked as Dead.
+      for (const p of latestPlayers) {
+          await supabase.from('players').update({ 
+               is_alive: (p.is_alive && !deadIds.has(p.id)) ? true : false,
+               last_action_target: p.action_target,
+               action_target: null,
+               vote_target: null
+          }).eq('id', p.id);
+      }
       
       if (winner) {
           await supabase.from('rooms').update({ 
               status: 'Finished', 
-              winner_faction: winner as Faction 
+              winner_faction: winner as Faction,
+              last_night_summary: { deadNames, message: `The game is over! ${winner} has won.` } as any
           }).eq('id', roomId);
           return;
       }
 
-      // Prepare summary
+      // 7. Prepare normal summary if game continues
       const summary = {
           deadNames,
           message: deadNames.length === 0 
@@ -364,14 +379,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ? `${deadNames[0]} was found dead.` 
                 : `${deadNames.slice(0, -1).join(', ')} and ${deadNames.slice(-1)} were found dead.`}`
       };
-
-      for (const p of latestPlayers) {
-          await supabase.from('players').update({ 
-               last_action_target: p.action_target,
-               action_target: null,
-               vote_target: null
-          }).eq('id', p.id);
-      }
 
       await supabase.from('rooms').update({ 
           status: 'Day', 
@@ -461,9 +468,23 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (room.status === 'Finished') {
-        // Reset room to lobby
-        await supabase.from('rooms').update({ status: 'Lobby', winner_faction: null }).eq('id', roomId);
-        await supabase.from('players').update({ is_alive: true, role_id: null, faction: null, vote_target: null, action_target: null }).eq('room_id', roomId);
+        // Reset EVERYTHING for a clean new game in the same lobby
+        await supabase.from('rooms').update({ 
+            status: 'Lobby', 
+            winner_faction: null,
+            mafia_target: null,
+            last_night_summary: {},
+            last_vote_summary: {}
+        }).eq('id', roomId);
+
+        await supabase.from('players').update({ 
+            is_alive: true, 
+            role_id: null, 
+            faction: null, 
+            vote_target: null, 
+            action_target: null, 
+            last_action_target: null 
+        }).eq('room_id', roomId);
         return;
     }
 
