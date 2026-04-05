@@ -362,11 +362,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 6. Final Synchronized Update: Deaths, History, and Resets
       // We do this BEFORE potentially returning so the Game Over screen has the dead players marked as Dead.
       for (const p of latestPlayers) {
-          const isMayor = p.role_id === 'mayor';
+          const isMayor = p.role_id?.toLowerCase() === 'mayor';
           await supabase.from('players').update({ 
                is_alive: (p.is_alive && !deadIds.has(p.id)) ? true : false,
                last_action_target: p.action_target,
                // MAGISTRATE (Mayor) pardon persists from Night until end of Voting
+               // Even if the Mayor died tonight, the pardon was granted while they were alive.
                action_target: isMayor ? p.action_target : null,
                vote_target: null
           }).eq('id', p.id);
@@ -425,8 +426,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       // 3. Check for Mayor's Pardon (Magistrate save)
-      // Note: Use snake_case because it is raw DB data
-      const mayorAction = latestPlayers.find(p => p.role_id === 'mayor' && p.is_alive);
+      // Note: Use snake_case because it is raw DB data. 
+      // We check for the Mayor regardless of life status during Voting because the pardon was a Night action decree.
+      const mayorAction = latestPlayers.find(p => p.role_id?.toLowerCase() === 'mayor');
       const isPardoned = winnerId && winnerId !== 'skip' && mayorAction?.action_target === winnerId;
 
       // 4. Identify the Winner Player from the LATEST fetched data (raw DB state)
@@ -448,7 +450,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (winnerPlayer && !isPardoned) {
         // JESTER WIN CONDITION: Correctly using role_id from latestPlayers
-          if (winnerPlayer.role_id === "jester") {
+          if (winnerPlayer.role_id?.toLowerCase() === "jester") {
             await supabase.from("players").update({ is_alive: false }).eq("id", winnerId);
             await supabase.from("rooms").update({ 
                 status: "Finished", 
@@ -463,13 +465,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.from("players").update({ is_alive: false }).eq("id", winnerId);
       }
 
-      // ... existing cleanup logic ...
+      // 5. Update every player individually to clear targets
       for (const p of latestPlayers) {
-          const isMayor = p.role_id === 'mayor';
+          const isMayor = p.role_id?.toLowerCase() === 'mayor';
           await supabase.from('players').update({ 
                vote_target: null,
                action_target: isMayor ? null : p.action_target,
-               last_action_target: isMayor ? p.action_target : p.last_action_target
+               last_action_target: isMayor ? p.action_target : (p.last_action_target || p.action_target)
           }).eq('id', p.id);
       }
 
