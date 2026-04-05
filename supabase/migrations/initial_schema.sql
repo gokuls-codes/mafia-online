@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   settings JSONB DEFAULT '{"roleCounts": {"villager": 3, "mafia": 1, "doctor": 1}, "timerNight": 40, "timerDay": 90, "timerVoting": 45}'::JSONB,
   last_night_summary JSONB DEFAULT '{}'::JSONB,
   last_vote_summary JSONB DEFAULT '{}'::JSONB,
-  mafia_target UUID REFERENCES players(id),
+  mafia_target TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS players (
   faction TEXT,
   is_alive BOOLEAN DEFAULT TRUE,
   is_host BOOLEAN DEFAULT FALSE,
-  vote_target UUID REFERENCES players(id),
-  action_target UUID REFERENCES players(id),
-  last_action_target UUID REFERENCES players(id),
+  vote_target TEXT,
+  action_target TEXT,
+  last_action_target TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

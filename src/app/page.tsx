@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GameProvider, useGame } from '@/store/GameContext';
-import { LogIn, Plus, Users, Shield, UserX, Skull, Search, Info, HelpCircle, Moon, ShieldOff } from 'lucide-react';
+import { LogIn, Plus, Users, Shield, UserX, Skull, Search, Info, HelpCircle, Moon, ShieldOff, Clock } from 'lucide-react';
 import { ROLES, Faction } from '@/types/game';
 
 function LandingPage({ onCreate, onJoinByCode }: { onCreate: (name: string, hostName: string) => void, onJoinByCode: (code: string, name: string) => void }) {
@@ -234,42 +234,17 @@ function Lobby() {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <RoleBadge roleId="mafia" count={room.settings.roleCounts['mafia'] || 0} 
-            onIncrement={() => handleRoleCount('mafia', 1)}
-            onDecrement={() => handleRoleCount('mafia', -1)}
-            canEdit={me?.isHost || false}
-          />
-          <RoleBadge roleId="doctor" count={room.settings.roleCounts['doctor'] || 0} 
-            onIncrement={() => handleRoleCount('doctor', 1)}
-            onDecrement={() => handleRoleCount('doctor', -1)}
-            canEdit={me?.isHost || false}
-          />
-          <RoleBadge roleId="detective" count={room.settings.roleCounts['detective'] || 0} 
-            onIncrement={() => handleRoleCount('detective', 1)}
-            onDecrement={() => handleRoleCount('detective', -1)}
-            canEdit={me?.isHost || false}
-          />
-          <RoleBadge roleId="police" count={room.settings.roleCounts['police'] || 0} 
-            onIncrement={() => handleRoleCount('police', 1)}
-            onDecrement={() => handleRoleCount('police', -1)}
-            canEdit={me?.isHost || false}
-          />
-          <RoleBadge roleId="mayor" count={room.settings.roleCounts['mayor'] || 0} 
-            onIncrement={() => handleRoleCount('mayor', 1)}
-            onDecrement={() => handleRoleCount('mayor', -1)}
-            canEdit={me?.isHost || false}
-          />
-          <RoleBadge roleId="innocent" count={room.settings.roleCounts['innocent'] || 0} 
-            onIncrement={() => handleRoleCount('innocent', 1)}
-            onDecrement={() => handleRoleCount('innocent', -1)}
-            canEdit={me?.isHost || false}
-          />
-          <RoleBadge roleId="villager" count={room.settings.roleCounts['villager'] || 0} 
-            onIncrement={() => handleRoleCount('villager', 1)}
-            onDecrement={() => handleRoleCount('villager', -1)}
-            canEdit={me?.isHost || false}
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {Object.values(ROLES).sort((a, b) => a.name.localeCompare(b.name)).map(role => (
+            <RoleBadge 
+              key={role.id}
+              roleId={role.id} 
+              count={room.settings.roleCounts[role.id] || 0} 
+              onIncrement={() => handleRoleCount(role.id, 1)}
+              onDecrement={() => handleRoleCount(role.id, -1)}
+              canEdit={me?.isHost || false}
+            />
+          ))}
         </div>
 
         {me?.isHost && (
@@ -407,7 +382,8 @@ function NightView() {
   }
 
   const isSavingRole = ['doctor', 'mayor'].includes(me.roleId?.toLowerCase() || '');
-  const hasAction = ['doctor', 'mafia', 'godfather', 'detective', 'police', 'mayor'].includes(me.roleId?.toLowerCase() || '');
+  const isDead = !me.isAlive;
+  const hasAction = !isDead && ['doctor', 'mafia', 'godfather', 'detective', 'police', 'mayor'].includes(me.roleId?.toLowerCase() || '');
   const isDetectiveLocked = me.roleId?.toLowerCase() === 'detective' && me.actionTarget;
   
   // 1. Lock if you are Mafia and the hit is already finalized in room.mafia_target
@@ -734,14 +710,31 @@ function DayView() {
   );
 }
 
+const VOTE_TIMER_DURATION = 120;
+
 function VotingView() {
   const { room, players, me, voteForPlayer, nextPhase } = useGame();
+  const [timeLeft, setTimeLeft] = useState(VOTE_TIMER_DURATION);
   
+  useEffect(() => {
+     if (timeLeft <= 0) return;
+     const timer = setInterval(() => {
+        setTimeLeft(prev => Math.max(0, prev - 1));
+     }, 1000);
+     return () => clearInterval(timer);
+  }, [timeLeft]);
+
   if (!room || !me) return null;
 
   const alivePlayers = players.filter(p => p.isAlive);
   const myVote = me.voteTarget;
   const isDead = !me.isAlive;
+
+  const formatTime = (seconds: number) => {
+     const mins = Math.floor(seconds / 60);
+     const secs = seconds % 60;
+     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <motion.div 
@@ -750,8 +743,14 @@ function VotingView() {
       className="p-8 max-w-4xl mx-auto space-y-12"
     >
       <div className="text-center space-y-4">
-        <h2 className="text-5xl font-cinzel text-red-500 tracking-[0.2em]">THE VERDICT</h2>
-        <p className="text-zinc-500 font-outfit uppercase tracking-widest text-sm">Cast your judgment</p>
+        <div className="flex flex-col items-center gap-2">
+            <h2 className="text-5xl font-cinzel text-red-500 tracking-[0.2em]">THE VERDICT</h2>
+            <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 px-4 py-1.5 rounded-full mt-2">
+                <Clock className={`w-4 h-4 text-red-500 ${timeLeft < 20 ? 'animate-pulse' : ''}`} />
+                <span className="font-mono text-xl text-red-500 font-bold tracking-widest">{formatTime(timeLeft)}</span>
+            </div>
+        </div>
+        <p className="text-zinc-500 font-outfit uppercase tracking-widest text-sm translate-y-2">Cast your judgment</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
@@ -810,6 +809,42 @@ function VotingView() {
                 </button>
               );
             })}
+
+            {/* Skip Vote Option */}
+            <button 
+              onClick={() => !isDead && voteForPlayer('skip')}
+              disabled={isDead}
+              className={`flex items-center justify-between p-5 rounded-2xl transition-all border group relative overflow-hidden min-h-[85px] mt-2 ${
+                  myVote === 'skip' 
+                  ? 'bg-zinc-100 border-zinc-200 text-black shadow-lg' 
+                  : 'glass border-white/5 hover:border-zinc-500 text-zinc-400'
+              } disabled:opacity-50`}
+            >
+              <div className="flex flex-col items-start translate-y-0.5 max-w-[70%]">
+                <span className="font-outfit text-xl font-medium truncate w-full text-left">Abstain / No Conviction</span>
+                <div className="flex flex-wrap gap-1 mt-2 min-h-[22px]">
+                     {players.filter(v => v.voteTarget === 'skip').map(v => (
+                         <motion.span 
+                           initial={{ scale: 0 }}
+                           animate={{ scale: 1 }}
+                           key={v.id} 
+                           className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-tighter ${v.id === me.id ? (myVote === 'skip' ? 'bg-black text-white' : 'bg-white text-black') : (myVote === 'skip' ? 'bg-black/20 text-black' : 'bg-white/10 text-zinc-500')}`}
+                         >
+                             {v.id === me.id ? 'YOU' : v.name.split(' ')[0]}
+                         </motion.span>
+                     ))}
+                </div>
+              </div>
+              
+              <div className="flex flex-col items-end min-w-[50px]">
+                  {players.filter(v => v.voteTarget === 'skip').length > 0 && (
+                      <div className={`text-3xl font-cinzel font-bold leading-none ${myVote === 'skip' ? 'text-black' : 'text-zinc-500'}`}>
+                          {players.filter(v => v.voteTarget === 'skip').length}
+                      </div>
+                  )}
+                  <ShieldOff className={`w-5 h-5 ${myVote === 'skip' ? 'text-black' : 'opacity-20 group-hover:opacity-100'}`} />
+              </div>
+            </button>
           </div>
           {isDead && (
               <div className="p-4 bg-red-950/20 border border-red-500/20 rounded-2xl text-red-400 text-sm italic text-center">

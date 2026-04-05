@@ -398,7 +398,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
       });
 
-      // Find winner
+      // 2. Identify winner (could be a player ID or 'skip')
       let winnerId: string | null = null;
       let maxVotes = 0;
       Object.entries(votes).forEach(([id, count]) => {
@@ -408,22 +408,26 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
       });
 
-      // Check if winner was pardoned by Magistrate (Mayor)
+      // 3. Check for Mayor's Pardon (Only applies to real players, not skips)
       const mayorAction = players.find(p => p.roleId === 'mayor' && p.isAlive);
-      const isPardoned = winnerId && mayorAction?.actionTarget === winnerId;
+      const isPardoned = winnerId && winnerId !== 'skip' && mayorAction?.actionTarget === winnerId;
 
-      // Prepare summary
-      const winner = players.find(p => p.id === winnerId);
+      // 4. Prepare Result Summary
+      const winnerPlayer = winnerId && winnerId !== 'skip' ? players.find(p => p.id === winnerId) : null;
+      const isSkip = winnerId === 'skip';
+
       const voteSummary = {
-          deadNames: (winnerId && !isPardoned) ? [winner?.name || 'Unknown'] : [],
+          deadNames: (winnerPlayer && !isPardoned) ? [winnerPlayer.name] : [],
           message: isPardoned
-            ? `The mob has spoken, but the Mayor has granted ${winner?.name} an executive pardon. No one was evicted today.`
-            : (winnerId 
-                ? `The town has reached a verdict. ${winner?.name} has been sentenced to death.`
-                : 'The town could not reach a clear majority. No one was evicted today.')
+            ? `The mob has spoken, but the Mayor has granted ${winnerPlayer?.name} an executive pardon. No one was evicted today.`
+            : (isSkip
+                ? 'The town has officially decided to abstain from voting today. No one was executed.'
+                : (winnerPlayer 
+                    ? `The town has reached a verdict. ${winnerPlayer.name} has been sentenced to death.`
+                    : 'The town could not reach a clear majority. No one was evicted today.'))
       };
 
-      if (winnerId && !isPardoned) {
+      if (winnerPlayer && !isPardoned) {
           await supabase.from('players').update({ is_alive: false }).eq('id', winnerId);
       }
 
@@ -495,7 +499,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const performAction = async (targetId: string) => {
-    if (!me || !roomId) return;
+    if (!me || !roomId || !me.isAlive) return;
     
     // EVERYONE now stores their choice in their own player row first.
     // This allows Mafia members to see each other's preferences.
@@ -504,7 +508,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const confirmMafiaTarget = async (targetId: string) => {
-    if (!me || !roomId) return;
+    if (!me || !roomId || !me.isAlive) return;
     
     // Only Mafia/Godfather can confirm the syndicate target
     const roleId = me.roleId?.toLowerCase();
