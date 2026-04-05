@@ -24,10 +24,11 @@ export const ROLES: Record<string, Role> = {
   DOCTOR: {
     id: "doctor",
     name: "Doctor",
-    description: "A medical professional who can heal someone each night.",
+    description:
+      "A medical professional who can save someone from getting killed by the mafia.",
     faction: "Town",
     alignment: "Good",
-    powerDescription: "Protect one player from death each night.",
+    powerDescription: "Protect one player from death due to mafia each night.",
     maxCount: 2,
   },
   DETECTIVE: {
@@ -40,9 +41,9 @@ export const ROLES: Record<string, Role> = {
       "Investigate one player each night to see if they are suspicious.",
     maxCount: 2,
   },
-  MAFIOSO: {
-    id: "mafioso",
-    name: "Mafioso",
+  MAFIA: {
+    id: "mafia",
+    name: "Mafia",
     description: "The backbone of the Mafia. Carries out hits.",
     faction: "Mafia",
     alignment: "Evil",
@@ -117,7 +118,7 @@ export interface Room {
   name: string;
   hostId: string;
   status: GameStatus;
-  winnerFaction?: Faction;
+  winnerFaction?: Faction | null;
   createdAt: string;
   settings: {
     roleCounts: Record<string, number>;
@@ -125,6 +126,12 @@ export interface Room {
     timerDay: number;
     timerVoting: number;
   };
+  join_code?: string;
+  last_night_summary?: {
+    deadNames: string[];
+    message: string;
+  };
+  mafia_target?: string | null;
 }
 
 export interface Player {

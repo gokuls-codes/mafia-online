@@ -2,10 +2,10 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Room, Player, GameStatus, ROLES } from '@/types/game';
+import { Room, Player, GameStatus, ROLES, Faction } from '@/types/game';
 
 interface GameContextType {
-  room: (Room & { join_code?: string }) | null;
+  room: (Room & { join_code?: string; last_night_summary?: any; mafia_target?: string | null }) | null;
   players: Player[];
   me: Player | null;
   setRoomId: (id: string | null) => void;
@@ -16,6 +16,8 @@ interface GameContextType {
   startGame: () => Promise<void>;
   nextPhase: () => Promise<void>;
   performAction: (targetId: string) => Promise<void>;
+  voteForPlayer: (targetId: string) => Promise<void>;
+  confirmMafiaTarget: (targetId: string) => Promise<void>;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -84,6 +86,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             settings: data.settings,
             createdAt: data.created_at,
             join_code: data.join_code,
+            last_night_summary: data.last_night_summary,
+            mafia_target: data.mafia_target,
           } as any);
         }
       })
@@ -112,6 +116,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           settings: data.settings,
           createdAt: data.created_at,
           join_code: data.join_code,
+          last_night_summary: data.last_night_summary,
+          mafia_target: data.mafia_target,
         } as any);
       }
     };
@@ -145,6 +151,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [roomId, userId]);
 
+  const checkWinConditions = (allPlayers: any[]) => {
+    const alive = allPlayers.filter(p => p.is_alive);
+    const mafiaCount = alive.filter(p => p.faction === 'Mafia').length;
+    const townCount = alive.filter(p => p.faction === 'Town').length;
+    const neutralKillers = alive.filter(p => p.role_id === 'serial_killer').length;
+
+    if (mafiaCount === 0 && neutralKillers === 0) return { winner: 'Town' };
+    if (mafiaCount >= (townCount + neutralKillers)) return { winner: 'Mafia' };
+    if (alive.length === 1 && neutralKillers === 1) return { winner: 'Neutral' };
+    
+    return { winner: null };
+  };
+
   const createRoom = async (name: string, hostName: string) => {
     if (!userId) throw new Error('Not initialized');
 
@@ -157,7 +176,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       host_id: userId,
       join_code: joinCode,
       settings: {
-        roleCounts: { [ROLES.VILLAGER.id]: 3, [ROLES.MAFIOSO.id]: 1, [ROLES.DOCTOR.id]: 1 },
+        roleCounts: { [ROLES.VILLAGER.id]: 3, [ROLES.MAFIA.id]: 1, [ROLES.DOCTOR.id]: 1 },
         timerNight: 40,
         timerDay: 90,
         timerVoting: 45,
@@ -263,6 +282,139 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const nextPhase = async () => {
     if (!roomId || !room) return;
+    
+    if (room.status === 'Night') {
+      // --- NIGHT RESOLUTION LOGIC ---
+      
+      // 1. Get all action targets
+      const alivePlayers = players.filter(p => p.isAlive);
+      const mafiaVictimId = room.mafia_target;
+      const doctorSaves = alivePlayers.filter(p => p.roleId === 'doctor' && p.actionTarget).map(p => p.actionTarget);
+      const policeTargets = alivePlayers.filter(p => p.roleId === 'police' && p.actionTarget).map(p => p.actionTarget);
+      
+      // 2. Already identified mafiaVictimId from room.mafia_target
+      const deadIds = new Set<string>();
+      const deadNames: string[] = [];
+
+      // 3. Check if victim was saved
+      if (mafiaVictimId) {
+          const victim = players.find(p => p.id === mafiaVictimId);
+          if (victim && !doctorSaves.includes(mafiaVictimId)) {
+              deadIds.add(mafiaVictimId);
+              deadNames.push(victim.name);
+          }
+      }
+
+      // 4. Police (Vigilante) Logic
+      for (const pId of policeTargets) {
+          if (!pId) continue;
+          const target = players.find(p => p.id === pId);
+          const vigilante = players.find(p => p.roleId === 'police');
+          if (target && vigilante) {
+              if (target.faction === 'Mafia' || target.roleId === 'serial_killer') {
+                  if (!deadIds.has(pId)) {
+                      deadIds.add(pId);
+                      deadNames.push(target.name);
+                  }
+              } else {
+                  // Killed an innocent! Vigilante dies too.
+                  if (!deadIds.has(vigilante.id)) {
+                      deadIds.add(vigilante.id);
+                      deadNames.push(vigilante.name);
+                  }
+              }
+          }
+      }
+
+      // 5. Apply deaths & Clear actions
+      for (const pId of Array.from(deadIds)) {
+          await supabase.from('players').update({ is_alive: false }).eq('id', pId);
+      }
+
+      // Check Victory
+      const allPlayersAfterNight = await supabase.from('players').select('*').eq('room_id', roomId);
+      const { winner } = checkWinConditions(allPlayersAfterNight.data || []);
+      
+      if (winner) {
+          await supabase.from('rooms').update({ 
+              status: 'Finished', 
+              winner_faction: winner as Faction 
+          }).eq('id', roomId);
+          return;
+      }
+
+      // Prepare summary
+      const summary = {
+          deadNames,
+          message: deadNames.length === 0 
+            ? 'A miracle has occurred—the city wakes up to find everyone survived the night!'
+            : `The city wakes up to tragedy... ${deadNames.length === 1 
+                ? `${deadNames[0]} was found dead.` 
+                : `${deadNames.slice(0, -1).join(', ')} and ${deadNames.slice(-1)} were found dead.`}`
+      };
+
+      await supabase.from('rooms').update({ 
+          status: 'Day', 
+          last_night_summary: summary as any,
+          mafia_target: null
+      }).eq('id', roomId);
+      await supabase.from('players').update({ action_target: null }).eq('room_id', roomId);
+      return; 
+    }
+
+    if (room.status === 'Voting') {
+      // --- VOTING RESOLUTION LOGIC ---
+      const activePlayers = players.filter(p => p.isAlive);
+      const votes: Record<string, number> = {};
+      activePlayers.forEach(p => {
+          if (p.voteTarget) {
+              votes[p.voteTarget] = (votes[p.voteTarget] || 0) + 1;
+          }
+      });
+
+      // Find winner
+      let winnerId: string | null = null;
+      let maxVotes = 0;
+      Object.entries(votes).forEach(([id, count]) => {
+          if (count > maxVotes) {
+              maxVotes = count;
+              winnerId = id;
+          }
+      });
+
+      // Check if winner was pardoned by Magistrate (Mayor)
+      const mayorAction = players.find(p => p.roleId === 'mayor' && p.isAlive);
+      const isPardoned = winnerId && mayorAction?.actionTarget === winnerId;
+
+      if (winnerId && !isPardoned) {
+          await supabase.from('players').update({ is_alive: false }).eq('id', winnerId);
+      }
+
+      // Check Victory
+      const allPlayersAfterVote = await supabase.from('players').select('*').eq('room_id', roomId);
+      const { winner } = checkWinConditions(allPlayersAfterVote.data || []);
+
+      if (winner) {
+          await supabase.from('rooms').update({ 
+              status: 'Finished', 
+              winner_faction: winner as Faction 
+          }).eq('id', roomId);
+          return;
+      }
+
+      // Reset and move to Night
+      await supabase.from('players').update({ vote_target: null, action_target: null }).eq('room_id', roomId);
+      await supabase.from('rooms').update({ status: 'Night' }).eq('id', roomId);
+      return;
+    }
+
+    if (room.status === 'Finished') {
+        // Reset room to lobby
+        await supabase.from('rooms').update({ status: 'Lobby', winner_faction: null }).eq('id', roomId);
+        await supabase.from('players').update({ is_alive: true, role_id: null, faction: null, vote_target: null, action_target: null }).eq('room_id', roomId);
+        return;
+    }
+
     const phases: GameStatus[] = ['Lobby', 'Night', 'Day', 'Voting', 'Finished'];
     const currentIndex = phases.indexOf(room.status);
     const nextIndex = (currentIndex + 1) % phases.length;
@@ -271,7 +423,27 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const performAction = async (targetId: string) => {
     if (!me || !roomId) return;
-    await supabase.from('players').update({ action_target: targetId }).eq('id', me.id);
+    
+    // EVERYONE now stores their choice in their own player row first.
+    // This allows Mafia members to see each other's preferences.
+    const { error } = await supabase.from('players').update({ action_target: targetId }).eq('id', me.id);
+    if (error) console.error('Role action error:', error);
+  };
+
+  const confirmMafiaTarget = async (targetId: string) => {
+    if (!me || !roomId) return;
+    
+    // Only Mafia/Godfather can confirm the syndicate target
+    const roleId = me.roleId?.toLowerCase();
+    if (roleId === 'mafia' || roleId === 'godfather') {
+        const { error } = await supabase.from('rooms').update({ mafia_target: targetId }).eq('id', roomId);
+        if (error) console.error('Mafia syndicate action error:', error);
+    }
+  };
+
+  const voteForPlayer = async (targetId: string) => {
+    if (!me || !roomId) return;
+    await supabase.from('players').update({ vote_target: targetId }).eq('id', me.id);
   };
 
   return (
@@ -286,7 +458,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateSettings,
       startGame,
       nextPhase,
-      performAction
+      performAction,
+      voteForPlayer,
+      confirmMafiaTarget
     }}>
       {children}
     </GameContext.Provider>

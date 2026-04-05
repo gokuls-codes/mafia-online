@@ -5,10 +5,13 @@
 CREATE TABLE IF NOT EXISTS rooms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  host_id TEXT NOT NULL, -- UUIDs can be tricky if we don't use Supabase Auth, so using TEXT for host_id
+  host_id TEXT NOT NULL,
+  join_code TEXT UNIQUE,
   status TEXT DEFAULT 'Lobby' CHECK (status IN ('Lobby', 'Night', 'Day', 'Voting', 'Finished')),
   winner_faction TEXT,
-  settings JSONB DEFAULT '{"roleCounts": {"villager": 3, "mafioso": 1, "doctor": 1}, "timerNight": 40, "timerDay": 90, "timerVoting": 45}'::JSONB,
+  settings JSONB DEFAULT '{"roleCounts": {"villager": 3, "mafia": 1, "doctor": 1}, "timerNight": 40, "timerDay": 90, "timerVoting": 45}'::JSONB,
+  last_night_summary JSONB DEFAULT '{}'::JSONB,
+  mafia_target UUID REFERENCES players(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
