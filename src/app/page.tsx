@@ -155,7 +155,7 @@ function LandingPage({
             animate={{ opacity: 1, scale: 1 }}
             className="glass p-8 rounded-3xl w-full max-w-md border-zinc-800"
           >
-            <h2 className="text-3xl font-cinzel mb-6">INTERROGATE ROOM</h2>
+            <h2 className="text-3xl font-cinzel mb-6">JOIN ROOM</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-zinc-500 text-sm mb-2 uppercase tracking-widest font-bold">
@@ -227,7 +227,7 @@ function RoleBadge({
         <span className="font-cinzel text-lg flex items-center gap-2">
           {role.name}
         </span>
-        <span className="text-xs text-zinc-500">{role.description}</span>
+        <span className="text-sm text-red-100/60">{role.description}</span>
       </div>
       <div className="flex items-center gap-4">
         {canEdit && (
@@ -712,7 +712,7 @@ function NightView() {
         {/* Action List - Only show if player has an action */}
         {hasAction && (
           <div className="space-y-4">
-            <h4 className="text-xs text-zinc-500 uppercase tracking-widest font-bold px-2">
+            <h4 className="text-sm text-zinc-500 uppercase tracking-widest font-bold px-2">
               Potential Targets
             </h4>
             <div className="grid grid-cols-1 gap-2">
@@ -978,7 +978,7 @@ function DayView() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
         <div className="space-y-4">
-          <h4 className="text-xs text-zinc-500 uppercase tracking-widest font-bold px-2">
+          <h4 className="text-sm text-zinc-500 uppercase tracking-widest font-bold px-2">
             Survivor Status
           </h4>
           <div className="grid grid-cols-1 gap-2">
@@ -1094,7 +1094,7 @@ function VotingView() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
         <div className="space-y-4">
-          <h4 className="text-xs text-zinc-500 uppercase tracking-widest font-bold px-2">
+          <h4 className="text-sm text-zinc-500 uppercase tracking-widest font-bold px-2">
             Casting Ballot
           </h4>
           <div className="grid grid-cols-1 gap-3">
@@ -1332,7 +1332,7 @@ function GameOverView() {
       </div>
 
       <div className="glass p-8 rounded-3xl border-white/5 space-y-6">
-        <h3 className="text-xs text-zinc-500 uppercase tracking-widest font-bold border-b border-white/5 pb-4">
+        <h3 className="text-sm text-zinc-500 uppercase tracking-widest font-bold border-b border-white/5 pb-4">
           The Final Reveal
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
