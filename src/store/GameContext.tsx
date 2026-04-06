@@ -1,11 +1,18 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+  buildRolePool,
+  checkWinConditions,
+  DEFAULT_ROOM_SETTINGS,
+  mapPlayerRows,
+  mapRoomRow,
+} from '@/features/game/lib/game-data';
 import { supabase } from '@/lib/supabase';
 import { Room, Player, GameStatus, ROLES, Faction } from '@/types/game';
 
 interface GameContextType {
-  room: (Room & { join_code?: string; last_night_summary?: any; mafia_target?: string | null }) | null;
+  room: Room | null;
   players: Player[];
   me: Player | null;
   setRoomId: (id: string | null) => void;
@@ -29,6 +36,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [players, setPlayers] = useState<Player[]>([]);
   const [me, setMe] = useState<Player | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+
+  const resetLocalRoomState = () => {
+    setRoomId(null);
+    setRoom(null);
+    setPlayers([]);
+    setMe(null);
+    sessionStorage.removeItem('mafia_room_id');
+  };
 
   useEffect(() => {
     // 1. Initialize User ID
@@ -78,19 +93,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('Room changed:', payload);
         const data = payload.new;
         if (data) {
-          setRoom({
-            id: data.id,
-            name: data.name,
-            hostId: data.host_id,
-            status: data.status,
-            winnerFaction: data.winner_faction,
-            settings: data.settings,
-            createdAt: data.created_at,
-            join_code: data.join_code,
-            last_night_summary: data.last_night_summary,
-            last_vote_summary: data.last_vote_summary,
-            mafia_target: data.mafia_target,
-          } as any);
+          setRoom(mapRoomRow(data));
         }
       })
       .on('postgres_changes', { 
@@ -109,19 +112,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const fetchRoom = async () => {
       const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
       if (data) {
-        setRoom({
-          id: data.id,
-          name: data.name,
-          hostId: data.host_id,
-          status: data.status,
-          winnerFaction: data.winner_faction,
-          settings: data.settings,
-          createdAt: data.created_at,
-          join_code: data.join_code,
-          last_night_summary: data.last_night_summary,
-          last_vote_summary: data.last_vote_summary,
-          mafia_target: data.mafia_target,
-        } as any);
+        setRoom(mapRoomRow(data));
       }
     };
 
@@ -131,30 +122,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('room_id', roomId)
         .order('created_at', { ascending: true });
       if (data) {
-        const mappedPlayers = data.map((p: any) => ({
-          id: p.id,
-          roomId: p.room_id,
-          userId: p.user_id,
-          name: p.name,
-          roleId: p.role_id,
-          faction: p.faction,
-          isAlive: p.is_alive,
-          isHost: p.is_host,
-          voteTarget: p.vote_target,
-          actionTarget: p.action_target,
-          lastActionTarget: p.last_action_target
-        }));
+        const mappedPlayers = mapPlayerRows(data);
         setPlayers(mappedPlayers);
         const myPlayer = mappedPlayers.find(p => p.userId === userId);
         if (myPlayer) {
           setMe(myPlayer);
         } else if (roomId && userId) {
           // If we were in a room but are no longer in the player list, we've been kicked
-          setRoomId(null);
-          setRoom(null);
-          setPlayers([]);
-          setMe(null);
-          sessionStorage.removeItem('mafia_room_id');
+          resetLocalRoomState();
         }
       }
     };
@@ -167,28 +142,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [roomId, userId]);
 
-  const checkWinConditions = (allPlayers: any[]) => {
-    // Note: This function works with raw DB objects (snake_case)
-    const alive = allPlayers.filter(p => p.is_alive);
-    if (alive.length === 0) return { winner: 'None' };
-
-    const mafiaCount = alive.filter(p => p.faction === 'Mafia').length;
-    const townCount = alive.filter(p => p.faction === 'Town').length;
-    const neutralKillers = alive.filter(p => p.role_id === 'serial_killer').length;
-
-    // Town wins if all threats (Mafia and SK) are eliminated
-    if (mafiaCount === 0 && neutralKillers === 0) return { winner: 'Town' };
-    
-    // Mafia wins when they reach parity with OR outnumber the rest of the living players
-    if (mafiaCount >= (alive.length - mafiaCount)) return { winner: 'Mafia' };
-    
-    // Serial Killer wins if they are the last one standing (or 1v1 with a non-lethal role)
-    if (alive.length === 1 && neutralKillers === 1) return { winner: 'Neutral' };
-    if (alive.length === 2 && neutralKillers === 1 && mafiaCount === 0) return { winner: 'Neutral' };
-    
-    return { winner: null };
-  };
-
   const createRoom = async (name: string, hostName: string) => {
     if (!userId) throw new Error('Not initialized');
 
@@ -200,18 +153,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       status: 'Lobby',
       host_id: userId,
       join_code: joinCode,
-      settings: {
-        roleCounts: { [ROLES.VILLAGER.id]: 3, [ROLES.MAFIA.id]: 1, [ROLES.DOCTOR.id]: 1 },
-        timerNight: 40,
-        timerDay: 90,
-        timerVoting: 45,
-      },
+      settings: DEFAULT_ROOM_SETTINGS,
     };
 
     const { data: roomData, error: roomError } = await supabase.from('rooms').insert(newRoom).select().single();
     if (roomError) throw roomError;
 
-    const { data: playerData, error: playerError } = await supabase.from('players').insert({
+    const { error: playerError } = await supabase.from('players').insert({
       room_id: roomData.id,
       user_id: userId,
       name: hostName,
@@ -276,11 +224,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const startGame = async () => {
     if (!roomId || !room) return;
     
-    // 1. Prepare role pool
-    const rolePool: string[] = [];
-    Object.entries(room.settings.roleCounts).forEach(([roleId, count]) => {
-      for (let i = 0; i < count; i++) rolePool.push(roleId);
-    });
+    const rolePool = buildRolePool(room.settings.roleCounts);
 
     // 2. Strict Check: roles must exactly match players
     if (rolePool.length !== players.length) {
@@ -360,8 +304,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // 4. Update Victory Condition Check
-      const allPlayersAfterNight = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
-      // Filter the local latestPlayers to reflect the deaths we just calculated
       const playersAfterDeaths = latestPlayers.map(p => ({
           ...p,
           is_alive: deadIds.has(p.id) ? false : p.is_alive
@@ -507,9 +449,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (room.status === 'Verdict') {
-        const deadIds = room.last_vote_summary?.deadNames || [];
-        // The player is already officially deceased if listed (optional check)
-        // Check Victory before moving to Night
         const allPlayersAfterVerdict = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
         const { winner: winFaction } = checkWinConditions(allPlayersAfterVerdict.data || []);
 

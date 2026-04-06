@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Mafia Online
+
+Real-time social deduction game built with Next.js, React, and Supabase.
+
+## Project Structure
+
+- `src/app/page.tsx`: thin route entry point.
+- `src/features/game/components/`: game shell and phase-specific UI.
+- `src/features/game/lib/`: shared role helpers and game data mapping.
+- `src/store/GameContext.tsx`: Supabase-backed game state and actions.
+- `supabase/migrations/`: schema and gameplay-related DB changes.
 
 ## Getting Started
 
-First, run the development server:
+1. Install dependencies.
+
+```bash
+npm install
+```
+
+2. Create local environment variables.
+
+```bash
+cp .env.example .env.local
+```
+
+3. Fill in these values in `.env.local`.
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+```
+
+4. Start the development server.
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Notes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `node_modules` is not committed, so install dependencies before running lint, build, or dev.
+- The app expects a Supabase project with the migrations under `supabase/migrations/`.
+- The game UI is organized by phase to keep the route layer small and easier to maintain.
 
-## Learn More
+## Available Scripts
 
-To learn more about Next.js, take a look at the following resources:
+- `npm run dev`
+- `npm run build`
+- `npm run start`
+- `npm run lint`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Framework Note
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This repo is pinned to `next@16.2.2`. The local framework docs referenced by `AGENTS.md` live under `node_modules/next/dist/docs/`, so install dependencies before making framework-level changes.
